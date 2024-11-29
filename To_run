@@ -1,0 +1,50 @@
+# CM006 Unit8 
+link_folder = r'E:\Data\241105_CM006\unit8'
+link_file_mat = r'E:\Data\241105_CM006\unit8\unit8_32_bottomhalf.mat'
+link_save = r'E:\Data\241105_CM006\unit8\Save'
+sigma_value = 10
+deg_value = 5
+fs_value = 30.9
+height_value=0.2        # Minimum height of peaks (adjust as needed)
+prominence_value=0.1   # Minimum prominence of peaks
+distance_value=2
+cutoff_value = 5
+
+
+mat = scipy.io.loadmat(link_file_mat)
+cfu_to_tif_global(link_file_mat, link_save, list(mat.keys())[3], 2)
+pd_data, pd_data_df = get_data_global(link_file_mat, link_save, list(mat.keys())[3])
+pd_data_df = pd.DataFrame(pd_data_df)
+pd_data = pd.DataFrame(pd_data)
+pd_data_corr = pd_data-110
+pd_data_corr_baseline = calculate_baseline(pd_data_corr, sigma=sigma_value, deg = deg_value)
+pd_data_corr_df =pd.DataFrame()
+for col in pd_data_corr_baseline .columns:
+    pd_data_corr_df[col] = (pd_data_corr[col]-pd_data_corr_baseline[col])/pd_data_corr_baseline[col]
+pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg = deg_value)
+plot_and_save(pd_data_corr_df, pd_data_corr_df_baselinetocheck, link_save + '\corrected_baseline')
+'''peak_indices_df, peak_counts_df = detect_peaks(
+    df=pd_data_corr_df,
+    height=height_value,        # Minimum height of peaks (adjust as needed)
+    prominence=prominence_value,   # Minimum prominence of peaks
+    distance=distance_value        # Minimum distance between peaks
+)
+print(peak_counts_df)
+plot_peaks(pd_data_corr_df, peak_indices_df, link_save + '\CFU_Peaks_calc')'''
+output_dir = link_save + '\CFU_Peaks_calc_smooth'
+peak_indices, smoothed_data, peak_counts = detect_peaks_on_smoothed_data(pd_data_corr_df, 
+                                                                         fs=fs_value, 
+                                                                         cutoff=cutoff_value, 
+                                                                         height=height_value,        # Minimum height of peaks (adjust as needed)
+                                                                         prominence=prominence_value,   # Minimum prominence of peaks
+                                                                         distance=distance_value )
+print(peak_counts)
+plot_peaks_on_smoothed_data_with_baseline(pd_data_corr_df, 
+                                          smoothed_data, peak_indices, 
+                                          pd_data_corr_df_baselinetocheck, 
+                                          link_save + '\CFU_Peaks_calc_smooth', fs_value)
+plot_peak_density_per_cfu(peak_indices, fs=fs_value, output_dir=link_save + '\CFU_Peaks_dencity')
+save_cfu_analysis_with_report_v2(
+    pd_data_corr_df, smoothed_data, pd_data_corr_df_baselinetocheck, peak_indices, link_save,
+    link_folder, link_file_mat, link_save,
+    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value
