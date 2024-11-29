@@ -713,3 +713,47 @@ def plot_combined_smoothed_and_peak_density(
         # Save the plot
         fig.write_html(output_path + f"/combined_smoothed_peak_density_{cfu}.html")
         print(f"Saved combined plot for {cfu} to {output_path}")
+
+def compare_peak_times(peak_indices, tolerance_frames, fps, output_path):
+    """
+    Compares whether different masks (CFUs) have peaks at the same time within a given tolerance
+    and generates a heatmap showing the overlap.
+
+    Parameters:
+        peak_indices (dict): A dictionary with CFU names as keys and detected peak indices as values.
+        tolerance_frames (int): Tolerance around the peak for comparison (in frames).
+        fps (float): Frames per second, used to annotate the heatmap with time in seconds.
+        output_path (str): Path to save the heatmap HTML file.
+    """
+    cfus = list(peak_indices.keys())
+    num_cfus = len(cfus)
+    overlap_matrix = np.zeros((num_cfus, num_cfus), dtype=int)
+    for i, cfu_1 in enumerate(cfus):
+        for j, cfu_2 in enumerate(cfus):
+            if i <= j:  # Only compute upper triangle (matrix is symmetric)
+                peaks_1 = np.array(peak_indices[cfu_1])
+                peaks_2 = np.array(peak_indices[cfu_2])
+                for peak_1 in peaks_1:
+                    matches = np.any(np.abs(peaks_2 - peak_1) <= tolerance_frames)
+                    overlap_matrix[i, j] += matches
+    overlap_matrix = overlap_matrix + overlap_matrix.T - np.diag(overlap_matrix.diagonal())
+    overlap_df = pd.DataFrame(overlap_matrix, index=cfus, columns=cfus)
+    fig = px.imshow(
+        overlap_df,
+        labels=dict(x="CFU", y="CFU", color="Peak Overlap Count"),
+        x=cfus,
+        y=cfus,
+        color_continuous_scale="Viridis",
+        title=f"Peak Overlap Heatmap (Tolerance: +/- {tolerance_frames} frames)"
+    )
+    time_tolerance = tolerance_frames / fps
+    fig.add_annotation(
+        text=f"Time Tolerance: +/- {time_tolerance:.2f} seconds",
+        xref="paper", yref="paper",
+        x=1.1, y=1.1, showarrow=False
+    )
+    heatmap_path = f"{output_path}\peak_overlap_heatmap.html"
+    fig.write_html(heatmap_path)
+    print(f"Saved heatmap to {heatmap_path}")
+
+    return overlap_df
