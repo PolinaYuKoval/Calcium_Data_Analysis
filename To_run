@@ -10,7 +10,6 @@ prominence_value=0.1   # Minimum prominence of peaks
 distance_value=2
 cutoff_value = 5
 
-
 mat = scipy.io.loadmat(link_file_mat)
 cfu_to_tif_global(link_file_mat, link_save, list(mat.keys())[3], 2)
 pd_data, pd_data_df = get_data_global(link_file_mat, link_save, list(mat.keys())[3])
@@ -23,14 +22,6 @@ for col in pd_data_corr_baseline .columns:
     pd_data_corr_df[col] = (pd_data_corr[col]-pd_data_corr_baseline[col])/pd_data_corr_baseline[col]
 pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg = deg_value)
 plot_and_save(pd_data_corr_df, pd_data_corr_df_baselinetocheck, link_save + '\corrected_baseline')
-'''peak_indices_df, peak_counts_df = detect_peaks(
-    df=pd_data_corr_df,
-    height=height_value,        # Minimum height of peaks (adjust as needed)
-    prominence=prominence_value,   # Minimum prominence of peaks
-    distance=distance_value        # Minimum distance between peaks
-)
-print(peak_counts_df)
-plot_peaks(pd_data_corr_df, peak_indices_df, link_save + '\CFU_Peaks_calc')'''
 output_dir = link_save + '\CFU_Peaks_calc_smooth'
 peak_indices, smoothed_data, peak_counts = detect_peaks_on_smoothed_data(pd_data_corr_df, 
                                                                          fs=fs_value, 
@@ -47,4 +38,12 @@ plot_peak_density_per_cfu(peak_indices, fs=fs_value, output_dir=link_save + '\CF
 save_cfu_analysis_with_report_v2(
     pd_data_corr_df, smoothed_data, pd_data_corr_df_baselinetocheck, peak_indices, link_save,
     link_folder, link_file_mat, link_save,
-    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value
+    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value)
+plot_combined_smoothed_and_peak_density(
+     pd_data_corr_df, smoothed_data, peak_indices, fps=fs_value, 
+     height_value=height_value, prominence_value=prominence_value, distance_value=distance_value, sigma_value=sigma_value,
+     output_path=link_save)
+overlap_df = compare_peak_times(
+     peak_indices, tolerance_frames=1, fps=fs_value, output_path=link_save
+ )
+
