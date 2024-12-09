@@ -11,21 +11,53 @@ def cfu_to_tif(cfu_link, cfu_global, path_to_save):
     image.save(path_to_save)
     return path_to_save
 
-def cfu_to_tif_global(cfu_link, path_to_save, cfu_global = 'cfuInfo1', index_2=2):
+def cfu_to_combined_tif_and_standard_plot(cfu_link, output_tiff_path, output_html_path, cfu_global='cfuInfo1', index_2=2):
     """
-    Converts a CFU MATLAB data to a TIFF image and saves it.
+    Converts CFU MATLAB data to a combined single multi-mask binary TIFF file and generates an overlapped binary standard plot.
+
+    Parameters:
+        cfu_link (str): Path to the .mat file.
+        output_tiff_path (str): Path to save the combined TIFF file.
+        output_html_path (str): Path to save the overlapped HTML plot.
+        cfu_global (str): Name of the global CFU variable in the .mat file.
+        index_2 (int): Index for selecting the masks.
     """
     mat = scipy.io.loadmat(cfu_link)
-    os.makedirs(path_to_save, exist_ok=True)
-    df_test = {}
-    mask_name = 'Mask_'
+    os.makedirs(output_tiff_path, exist_ok=True)
+    os.makedirs(output_html_path, exist_ok=True)
+
+    masks = []
+    mask_names = []
     for i in range(mat[cfu_global].shape[0]):
-        a = Image.fromarray((mat['cfuInfo1'][i][index_2] / np.max( mat['cfuInfo1'][i][index_2]) * 255).astype(np.uint8))
-        df_test['Mask_' + str(i)] = a
-        path = os.path.join(path_to_save, cfu_global + mask_name + str(i) + '.tiff')
-        image = a
-        image.save(path)
-    return 
+        mask_array = mat[cfu_global][i][index_2]
+        binary_mask = (mask_array > 0).astype(np.uint8)
+        scaled_mask = binary_mask * 255
+
+        masks.append(scaled_mask)
+        mask_names.append(f"Mask_{i}")
+    combined_tiff_path = os.path.join(output_tiff_path, 'MasksBinary.tif')
+    tiff.imwrite(combined_tiff_path, np.stack(masks, axis=0).astype(np.uint8))
+    print(f"Combined binary masks saved to {combined_tiff_path}")
+    fig = go.Figure()
+
+    for i, mask in enumerate(masks):
+        fig.add_trace(
+            go.Image(
+                z=mask,
+                name=f"Mask {i}",
+                opacity=0.5
+            )
+        )
+    fig.update_layout(
+        title="Overlapped Binary Masks",
+        xaxis_title="X",
+        yaxis_title="Y",
+        template="plotly_white",
+        legend_title="Masks"
+    )
+    combined_html_path = os.path.join(output_html_path, 'OverlappedBinaryMasks.html')
+    fig.write_html(combined_html_path)
+    print(f"Overlapped binary plot saved to {combined_html_path}")
 def get_data_global(cfu_link, path_to_save, cfu_global = 'cfuInfo1'):
     """
     Converts a CFU MATLAB data to a TIFF image and saves it.
@@ -48,7 +80,6 @@ def df_trans_ren(df, global_coef):
     df_transposed = df.T
     df_transposed.columns = [global_coef + f"{i+1}" for i in range(df_transposed.shape[1])]
     return df_transposed
-
 
 def calculate_baseline(df, sigma=10, deg=5):
     """
@@ -218,6 +249,8 @@ def plot_peaks_on_smoothed_data_with_baseline(df, smoothed_data_dict, peak_indic
         peaks = peak_indices[col]
         baseline = baseline_dict[col]
         time_seconds = np.arange(len(original_data)) / fps  # Convert frame numbers to seconds
+
+        # Create the plot
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=time_seconds, y=original_data, mode='lines', name=f"Original CFU {col}", line=dict(color="blue")))
         fig.add_trace(go.Scatter(x=time_seconds, y=smoothed_data, mode='lines', name=f"Smoothed CFU {col}", line=dict(color="green")))
@@ -236,6 +269,8 @@ def plot_peaks_on_smoothed_data_with_baseline(df, smoothed_data_dict, peak_indic
         output_path = os.path.join(output_dir, f"cfu_{col}_smoothed_peaks.html")
         fig.write_html(output_path)
         print(f"Saved peak detection graph for CFU {col} to {output_path}")
+
+        # Add to combined plot
         fig_combined.add_trace(go.Scatter(x=time_seconds, y=smoothed_data, mode='lines', name=f"Smoothed CFU {col}"))
         fig_combined.add_trace(go.Scatter(
             x=time_seconds[peaks], y=smoothed_data[peaks], mode='markers', name=f"Peaks {col} ({len(peaks)})"
@@ -266,8 +301,13 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
     os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
 
     for cfu, indices in peak_indices.items():
+        # Convert peak indices to time (seconds)
         peak_times = np.array(indices) / fs
+
+        # Create histogram bins
         peak_counts, bin_edges = np.histogram(peak_times, bins=bins)
+
+        # Create the Plotly bar plot
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=bin_edges[:-1],
@@ -276,6 +316,8 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
             marker=dict(color="blue", opacity=0.7),
             name="Peak Density"
         ))
+
+        # Update layout
         fig.update_layout(
             title=f"Peak Density for {cfu}",
             xaxis_title="Time (s)",
@@ -284,6 +326,7 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
             bargap=0.1
         )
 
+        # Save the plot as HTML
         output_path = os.path.join(output_dir, f"peak_density_{cfu}.html")
         fig.write_html(output_path)
         print(f"Saved peak density plot for {cfu} to {output_path}")
@@ -368,6 +411,7 @@ def detect_peaks(dff_data, height=None, prominence=None, distance=None):
     peak_indices = {}
 
     for col in dff_data.columns:
+        # Detect peaks
         peaks, _ = find_peaks(dff_data[col].values, height=height, prominence=prominence, distance=distance)
         peak_indices[col] = peaks
 
@@ -458,7 +502,7 @@ def plot_and_save_intensities(intensity_data, smoothed_data, peak_indices, outpu
 def save_cfu_analysis_with_report_v2(
     df, smoothed_data_dict, baseline_dict, peak_indices, output_dir,
     link_folder, link_file_mat, link_save,
-    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value
+    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value, binning, binning_factor
 ):
     """
     Saves the CFU analysis results to CSV files and generates a detailed TXT report.
@@ -487,6 +531,7 @@ def save_cfu_analysis_with_report_v2(
         baseline_data = baseline_dict[cfu]
         peak_mask = np.zeros(len(smoothed_data), dtype=int)
         peak_mask[peak_indices[cfu]] = 1  # Mark peaks as 1, others as 0
+
         cfu_data = pd.DataFrame({
             "CFU": cfu,
             "Original CFU Data": original_data,
@@ -521,6 +566,8 @@ def save_cfu_analysis_with_report_v2(
         report_file.write(f"Peak Detection Height: {height_value}\n")
         report_file.write(f"Peak Detection Prominence: {prominence_value}\n")
         report_file.write(f"Peak Detection Distance: {distance_value}\n\n")
+        report_file.write(f"Binning: {binning}\n\n")
+        report_file.write(f"Binning Factor: {binning_factor}\n\n")
         report_file.write(f"Total Length of Data (Mask_0): {len(df['Mask_0'])}\n")
         report_file.write("\nNumber of Peaks per Mask:\n")
         for cfu, indices in peak_indices.items():
@@ -528,12 +575,8 @@ def save_cfu_analysis_with_report_v2(
         report_file.write("\nFiles Saved:\n")
         report_file.write(f"- CFU Analysis: {cfu_analysis_csv_path}\n")
         report_file.write(f"- Peaks Summary: {peaks_csv_path}\n")
-
-        # Add date and time of analysis
         report_file.write("\nDate and Time of Analysis:\n")
         report_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-
-        # Add output folder location
         report_file.write("\nOutput Folder:\n")
         report_file.write(f"{output_dir}\n")
 
@@ -584,8 +627,6 @@ def plot_combined_smoothed_and_peak_density(
                        marker=dict(color='red', size=8)),
             row=1, col=1
         )
-
-        # Add barplot of peak density to the second subplot
         fig.add_trace(
             go.Bar(
                 x=bin_edges[:-1], y=peak_counts, width=1,  # Ensure bar width aligns with bins
@@ -759,3 +800,37 @@ def bin_dataframe(df, bin_factor=2):
 
     return binned_df
 
+def get_mask_overlap_table(tiff1_path, tiff2_path, output_csv_path, threshold=0.5):
+    """
+    Computes the overlap between masks in two 3D TIFF files and generates a table of corresponding masks.
+
+    Parameters:
+        tiff1_path (str): Path to the first TIFF file.
+        tiff2_path (str): Path to the second TIFF file.
+        threshold (float): Minimum overlap ratio to consider masks as corresponding (default: 0.5).
+
+    Returns:
+        pd.DataFrame: DataFrame containing mask correspondences with overlap percentages.
+    """
+    masks1 = tiff.imread(tiff1_path)
+    masks2 = tiff.imread(tiff2_path)
+    if masks1.shape[1:] != masks2.shape[1:]:
+        raise ValueError("Frames in the two TIFF files must have the same dimensions.")
+    correspondences = []
+    for i, mask1 in enumerate(masks1):
+        for j, mask2 in enumerate(masks2):
+            intersection = np.logical_and(mask1 > 0, mask2 > 0).sum()
+            area_mask1 = (mask1 > 0).sum()
+            area_mask2 = (mask2 > 0).sum()
+            overlap_ratio = intersection / min(area_mask1, area_mask2)
+            if overlap_ratio > threshold:
+                correspondences.append({
+                    "Mask_TIFF1": f"Mask_{i}",
+                    "Mask_TIFF2": f"Mask_{j}",
+                    "Overlap (%)": overlap_ratio * 100
+                })
+    overlap_table = pd.DataFrame(correspondences)
+    overlap_table.to_csv(output_csv_path, index=False)
+    print(f"Overlap table saved to {output_csv_path}")
+
+    return overlap_table
