@@ -11,6 +11,8 @@ import numpy.ma as ma
 from PIL import Image
 
 import plotly.graph_objects as go
+import plotly.subplots as sp
+
 import peakutils 
 
 import scipy
@@ -41,3 +43,4 @@ import plotly.express as px
 
 from ipywidgets import interactive, IntSlider
 from IPython.display import display
+
