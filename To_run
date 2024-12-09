@@ -1,14 +1,19 @@
-# CM006 Unit8 
-link_folder = r'E:\Data\241105_CM006\unit8'
-link_file_mat = r'E:\Data\241105_CM006\unit8\unit8_32_bottomhalf.mat'
-link_save = r'E:\Data\241105_CM006\unit8\Save'
-sigma_value = 10
+# 241202_CM005_rec1_more_unit0_32_crop
+link_folder = r'E:\Data\analysis_cm005'
+link_file_mat = r'E:\Data\analysis_cm005\241202_CM005_rec1_more_unit0_32_crop.mat'
+link_save = r'E:\Data\analysis_cm005\Save_241202_CM005_rec1_more_unit0_32_crop'
+sigma_value = 7
 deg_value = 5
 fs_value = 30.9
 height_value=0.2        # Minimum height of peaks (adjust as needed)
 prominence_value=0.1   # Minimum prominence of peaks
 distance_value=2
 cutoff_value = 5
+binning = True
+binning_factor = 2
+
+cols_list = ['Mask_0','Mask_50', 'Mask_61', 'Mask_43']
+cfu_list = ['CFU_0','CFU_50', 'CFU_61', 'CFU_43']
 
 mat = scipy.io.loadmat(link_file_mat)
 cfu_to_tif_global(link_file_mat, link_save, list(mat.keys())[3], 2)
@@ -20,8 +25,19 @@ pd_data_corr_baseline = calculate_baseline(pd_data_corr, sigma=sigma_value, deg 
 pd_data_corr_df =pd.DataFrame()
 for col in pd_data_corr_baseline .columns:
     pd_data_corr_df[col] = (pd_data_corr[col]-pd_data_corr_baseline[col])/pd_data_corr_baseline[col]
+if binning==True:
+    pd_data_corr = bin_dataframe(pd_data_corr, bin_factor=binning_factor)
+    fs_value = fs_value/binning_factor
+    print('Binning used')
+else:
+    print('No binning used')
 pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg = deg_value)
 plot_and_save(pd_data_corr_df, pd_data_corr_df_baselinetocheck, link_save + '\corrected_baseline')
+pd_data_df = pd_data_df[cols_list]
+pd_data_corr = pd_data_corr[cols_list]
+pd_data_corr_df = pd_data_corr_df[cols_list]
+pd_data_corr_df_baselinetocheck = pd_data_corr_df_baselinetocheck[cols_list]
+pd_data_corr_baseline = pd_data_corr_baseline[cols_list]
 output_dir = link_save + '\CFU_Peaks_calc_smooth'
 peak_indices, smoothed_data, peak_counts = detect_peaks_on_smoothed_data(pd_data_corr_df, 
                                                                          fs=fs_value, 
