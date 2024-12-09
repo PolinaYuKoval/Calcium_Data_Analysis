@@ -218,8 +218,6 @@ def plot_peaks_on_smoothed_data_with_baseline(df, smoothed_data_dict, peak_indic
         peaks = peak_indices[col]
         baseline = baseline_dict[col]
         time_seconds = np.arange(len(original_data)) / fps  # Convert frame numbers to seconds
-
-        # Create the plot
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=time_seconds, y=original_data, mode='lines', name=f"Original CFU {col}", line=dict(color="blue")))
         fig.add_trace(go.Scatter(x=time_seconds, y=smoothed_data, mode='lines', name=f"Smoothed CFU {col}", line=dict(color="green")))
@@ -238,8 +236,6 @@ def plot_peaks_on_smoothed_data_with_baseline(df, smoothed_data_dict, peak_indic
         output_path = os.path.join(output_dir, f"cfu_{col}_smoothed_peaks.html")
         fig.write_html(output_path)
         print(f"Saved peak detection graph for CFU {col} to {output_path}")
-
-        # Add to combined plot
         fig_combined.add_trace(go.Scatter(x=time_seconds, y=smoothed_data, mode='lines', name=f"Smoothed CFU {col}"))
         fig_combined.add_trace(go.Scatter(
             x=time_seconds[peaks], y=smoothed_data[peaks], mode='markers', name=f"Peaks {col} ({len(peaks)})"
@@ -270,13 +266,8 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
     os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
 
     for cfu, indices in peak_indices.items():
-        # Convert peak indices to time (seconds)
         peak_times = np.array(indices) / fs
-
-        # Create histogram bins
         peak_counts, bin_edges = np.histogram(peak_times, bins=bins)
-
-        # Create the Plotly bar plot
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=bin_edges[:-1],
@@ -285,8 +276,6 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
             marker=dict(color="blue", opacity=0.7),
             name="Peak Density"
         ))
-
-        # Update layout
         fig.update_layout(
             title=f"Peak Density for {cfu}",
             xaxis_title="Time (s)",
@@ -295,63 +284,10 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
             bargap=0.1
         )
 
-        # Save the plot as HTML
         output_path = os.path.join(output_dir, f"peak_density_{cfu}.html")
         fig.write_html(output_path)
         print(f"Saved peak density plot for {cfu} to {output_path}")
         
-'''def plot_peaks_on_smoothed_data_with_baseline(df, smoothed_data_dict, peak_indices, baseline_dict, output_dir):
-    """
-    Plots smoothed data, original df, baseline, and detected peaks for each CFU.
-
-    Parameters:
-        df (pd.DataFrame): Original data for reference.
-        smoothed_data_dict (dict): Dictionary of smoothed data.
-        peak_indices (dict): Dictionary of detected peaks.
-        baseline_dict (dict): Dictionary of baseline values for each CFU.
-        output_dir (str): Directory to save the plots.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    fig_combined = go.Figure()
-
-    for col in df.columns:
-        original_data = df[col].values
-        smoothed_data = smoothed_data_dict[col]
-        peaks = peak_indices[col]
-        baseline = baseline_dict[col]
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(y=original_data, mode='lines', name=f"Original CFU {col}", line=dict(color="blue")))
-        fig.add_trace(go.Scatter(y=smoothed_data, mode='lines', name=f"Smoothed CFU {col}", line=dict(color="green")))
-        fig.add_trace(go.Scatter(y=baseline, mode='lines', name=f"Baseline {col}", line=dict(color="orange", dash='dash')))
-        fig.add_trace(go.Scatter(
-            x=peaks, y=smoothed_data[peaks], mode='markers', name=f"Peaks {col}",
-            marker=dict(color='red', size=8)
-        ))
-        fig.update_layout(
-            title=f"Smoothed Data with Detected Peaks for CFU {col}",
-            xaxis_title="Index",
-            yaxis_title="Intensity",
-            template="plotly_white"
-        )
-
-        output_path = os.path.join(output_dir, f"cfu_{col}_smoothed_peaks.html")
-        fig.write_html(output_path)
-        print(f"Saved peak detection graph for CFU {col} to {output_path}")
-        fig_combined.add_trace(go.Scatter(y=smoothed_data, mode='lines', name=f"Smoothed CFU {col}"))
-        fig_combined.add_trace(go.Scatter(
-            x=peaks, y=smoothed_data[peaks], mode='markers', name=f"Peaks {col} ({len(peaks)})"
-        ))
-        fig_combined.add_trace(go.Scatter(y=baseline, mode='lines', name=f"Baseline {col} ({col})"))
-    combined_output_path = os.path.join(output_dir, "all_cfus_smoothed_peaks_combined.html")
-    fig_combined.update_layout(
-        title="Smoothed Data with Detected Peaks for All CFUs",
-        xaxis_title="Index",
-        yaxis_title="Intensity",
-        template="plotly_white"
-    )
-    fig_combined.write_html(combined_output_path)
-    print(f"Saved combined peak detection graph to {combined_output_path}")'''
-
 
 def calculate_intensities(tiff_file, mask_folder, output_csv):
     """
@@ -432,7 +368,6 @@ def detect_peaks(dff_data, height=None, prominence=None, distance=None):
     peak_indices = {}
 
     for col in dff_data.columns:
-        # Detect peaks
         peaks, _ = find_peaks(dff_data[col].values, height=height, prominence=prominence, distance=distance)
         peak_indices[col] = peaks
 
@@ -546,15 +481,12 @@ def save_cfu_analysis_with_report_v2(
     """
     os.makedirs(output_dir, exist_ok=True)
     cfu_analysis_df = pd.DataFrame()
-
-    # Generate the main analysis DataFrame
     for cfu in df.columns:
         original_data = df[cfu]
         smoothed_data = smoothed_data_dict[cfu]
         baseline_data = baseline_dict[cfu]
         peak_mask = np.zeros(len(smoothed_data), dtype=int)
         peak_mask[peak_indices[cfu]] = 1  # Mark peaks as 1, others as 0
-
         cfu_data = pd.DataFrame({
             "CFU": cfu,
             "Original CFU Data": original_data,
@@ -563,37 +495,25 @@ def save_cfu_analysis_with_report_v2(
             "Detected Peaks (Smoothed)": peak_mask
         })
         cfu_analysis_df = pd.concat([cfu_analysis_df, cfu_data], ignore_index=True)
-
-    # Save the main CFU analysis DataFrame
     cfu_analysis_csv_path = os.path.join(output_dir, "cfu_analysis.csv")
     cfu_analysis_df.to_csv(cfu_analysis_csv_path, index=False)
     print(f"Saved CFU analysis to {cfu_analysis_csv_path}")
-
-    # Generate the peaks summary DataFrame with counts
     peaks_data = []
     for cfu, indices in peak_indices.items():
         peaks_data.append({"CFU": cfu, "Detected Peak Count": len(indices)})
 
     peaks_df = pd.DataFrame(peaks_data)
-
-    # Save the peaks summary DataFrame
     peaks_csv_path = os.path.join(output_dir, "detected_peaks_summary.csv")
     peaks_df.to_csv(peaks_csv_path, index=False)
     print(f"Saved detected peaks summary to {peaks_csv_path}")
-
-    # Generate a report as a TXT file
     report_path = os.path.join(output_dir, "analysis_report.txt")
     with open(report_path, "w") as report_file:
         report_file.write("Analysis Report\n")
         report_file.write("=" * 40 + "\n\n")
-
-        # Write metadata
         report_file.write("Links and Paths:\n")
         report_file.write(f"Data Folder: {link_folder}\n")
         report_file.write(f"MAT File: {link_file_mat}\n")
         report_file.write(f"Save Folder: {link_save}\n\n")
-
-        # Write coefficients
         report_file.write("Coefficients Used:\n")
         report_file.write(f"Smoothing Sigma Value: {sigma_value}\n")
         report_file.write(f"Baseline Degree: {deg_value}\n")
@@ -601,16 +521,10 @@ def save_cfu_analysis_with_report_v2(
         report_file.write(f"Peak Detection Height: {height_value}\n")
         report_file.write(f"Peak Detection Prominence: {prominence_value}\n")
         report_file.write(f"Peak Detection Distance: {distance_value}\n\n")
-
-        # Write FPS and DataFrame length
         report_file.write(f"Total Length of Data (Mask_0): {len(df['Mask_0'])}\n")
-
-        # Write peaks summary
         report_file.write("\nNumber of Peaks per Mask:\n")
         for cfu, indices in peak_indices.items():
             report_file.write(f"- {cfu}: {len(indices)} peaks\n")
-
-        # Write file paths
         report_file.write("\nFiles Saved:\n")
         report_file.write(f"- CFU Analysis: {cfu_analysis_csv_path}\n")
         report_file.write(f"- Peaks Summary: {peaks_csv_path}\n")
@@ -643,18 +557,13 @@ def plot_combined_smoothed_and_peak_density(
         output_path (str): Path to save the combined plot.
     """
     for cfu in df.columns:
-        # Original data, smoothed data, and peaks
         original_data = df[cfu].values
         smoothed_data = smoothed_data_dict[cfu]
         peaks = peak_indices[cfu]
         time_seconds = np.arange(len(original_data)) / fps  # Convert frame numbers to seconds
-
-        # Calculate peak density
         peak_times = np.array(peaks) / fps
         bin_edges = np.arange(0, time_seconds[-1] + 1, 1)  # Align bins to time axis
         peak_counts, bin_edges = np.histogram(peak_times, bins=bin_edges)
-
-        # Create subplots
         fig = sp.make_subplots(
             rows=2, cols=1,
             shared_xaxes=True,
@@ -662,8 +571,6 @@ def plot_combined_smoothed_and_peak_density(
             row_heights=[0.7, 0.3],
             subplot_titles=(f"Smoothed Data with Peaks for {cfu}", "Peak Density")
         )
-
-        # Add smoothed data and peaks to the first subplot
         fig.add_trace(
             go.Scatter(x=time_seconds, y=original_data, mode='lines', name="Original Data", line=dict(color="blue", width=1)),
             row=1, col=1
@@ -686,8 +593,6 @@ def plot_combined_smoothed_and_peak_density(
             ),
             row=2, col=1
         )
-
-        # Update layout
         fig.update_layout(
             title=f"Combined Smoothed Data and Peak Density for {cfu}",
             xaxis_title="Time (s)",
@@ -709,8 +614,6 @@ def plot_combined_smoothed_and_peak_density(
                 )
             ]
         )
-
-        # Save the plot
         fig.write_html(output_path + f"/combined_smoothed_peak_density_{cfu}.html")
         print(f"Saved combined plot for {cfu} to {output_path}")
 
@@ -757,3 +660,102 @@ def compare_peak_times(peak_indices, tolerance_frames, fps, output_path):
     print(f"Saved heatmap to {heatmap_path}")
 
     return overlap_df
+
+def plot_high_overlap_pairs(df, smoothed_data_dict, peak_indices, overlap_df, overlap_threshold, fps, output_dir):
+    """
+    Identifies CFU pairs with more than a specified overlap threshold and plots their data together,
+    highlighting regions with overlapped peaks.
+
+    Parameters:
+        df (pd.DataFrame): Original CFU data.
+        smoothed_data_dict (dict): Dictionary of smoothed data for each CFU.
+        peak_indices (dict): Dictionary of detected peaks for each CFU.
+        overlap_df (pd.DataFrame): Overlap percentage DataFrame.
+        overlap_threshold (float): Threshold for overlap percentage to consider pairs.
+        fps (float): Frames per second of the data.
+        output_dir (str): Directory to save the plots.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    high_overlap_pairs = [
+        (cfu_1, cfu_2) for cfu_1 in overlap_df.index for cfu_2 in overlap_df.columns
+        if cfu_1 != cfu_2 and overlap_df.loc[cfu_1, cfu_2] > overlap_threshold
+    ]
+
+    for cfu_1, cfu_2 in high_overlap_pairs:
+        original_data_1 = df[cfu_1].values
+        smoothed_data_1 = smoothed_data_dict[cfu_1]
+        peaks_1 = np.array(peak_indices[cfu_1])
+
+        original_data_2 = df[cfu_2].values
+        smoothed_data_2 = smoothed_data_dict[cfu_2]
+        peaks_2 = np.array(peak_indices[cfu_2])
+
+        time_seconds = np.arange(len(original_data_1)) / fps  # Convert frame numbers to seconds
+        overlapping_peaks = [
+            peak_1 for peak_1 in peaks_1 if np.any(np.abs(peaks_2 - peak_1) <= 4)
+        ]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=time_seconds, y=original_data_1, mode='lines',
+            name=f"Original {cfu_1}", line=dict(color="blue", width=1)
+        ))
+        fig.add_trace(go.Scatter(
+            x=time_seconds, y=smoothed_data_1, mode='lines',
+            name=f"Smoothed {cfu_1}", line=dict(color="green", width=2)
+        ))
+        fig.add_trace(go.Scatter(
+            x=time_seconds[peaks_1], y=smoothed_data_1[peaks_1], mode='markers',
+            name=f"Peaks {cfu_1}", marker=dict(color='red', size=8)
+        ))
+        fig.add_trace(go.Scatter(
+            x=time_seconds, y=original_data_2, mode='lines',
+            name=f"Original {cfu_2}", line=dict(color="purple", width=1)
+        ))
+        fig.add_trace(go.Scatter(
+            x=time_seconds, y=smoothed_data_2, mode='lines',
+            name=f"Smoothed {cfu_2}", line=dict(color="orange", width=2)
+        ))
+        fig.add_trace(go.Scatter(
+            x=time_seconds[peaks_2], y=smoothed_data_2[peaks_2], mode='markers',
+            name=f"Peaks {cfu_2}", marker=dict(color='black', size=8)
+        ))
+        for overlap_peak in overlapping_peaks:
+            overlap_time = time_seconds[overlap_peak]
+            fig.add_vrect(
+                x0=overlap_time - (4 / fps), x1=overlap_time + (4 / fps),
+                fillcolor="rgba(255, 0, 0, 0.3)", layer="below", line_width=0
+            )
+        fig.update_layout(
+            title=f"High Overlap Between {cfu_1} and {cfu_2} (> {overlap_threshold}%)",
+            xaxis_title="Time (s)",
+            yaxis_title="Intensity",
+            template="plotly_white"
+        )
+        output_path = os.path.join(output_dir, f"overlap_{cfu_1}_{cfu_2}.html")
+        fig.write_html(output_path)
+        print(f"Saved high-overlap plot for {cfu_1} and {cfu_2} to {output_path}")
+
+def bin_dataframe(df, bin_factor=2):
+    """
+    Bins a dataframe by averaging consecutive rows in groups of bin_factor.
+
+    Parameters:
+        df (pd.DataFrame): Input dataframe where rows represent frames and columns represent measurements (e.g., CFUs).
+        bin_factor (int): Number of consecutive rows to average.
+
+    Returns:
+        pd.DataFrame: Binned dataframe with reduced row count.
+    """
+    num_rows = df.shape[0]
+    if num_rows % bin_factor != 0:
+        print(f"Warning: Number of rows ({num_rows}) is not divisible by bin_factor ({bin_factor}). "
+              f"Truncating to {num_rows - (num_rows % bin_factor)} rows.")
+        df = df.iloc[:num_rows - (num_rows % bin_factor)]
+    binned_data = (
+        df.values.reshape(-1, bin_factor, df.shape[1])
+        .mean(axis=1)
+    )
+    binned_df = pd.DataFrame(binned_data, columns=df.columns)
+
+    return binned_df
+
