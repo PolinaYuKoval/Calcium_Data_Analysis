@@ -1,43 +1,60 @@
-# 241202_CM005_rec1_more_unit0_32_crop
-link_folder = r'E:\Data\analysis_cm005'
-link_file_mat = r'E:\Data\analysis_cm005\241202_CM005_rec1_more_unit0_32_crop.mat'
-link_save = r'E:\Data\analysis_cm005\Save_241202_CM005_rec1_more_unit0_32_crop'
-sigma_value = 7
+############### Data (run from masks, AFTER THE MASKS ARE RETRIEVED)#############################################
+#################################################################################################################
+# 241106_CM005_unit10_32_upd
+link_folder = r'E:\Data\analysis_cm005\from_masks'
+link_file_mat = r'E:\Data\analysis_cm005\from_masks\241106_CM005_unit10_32_upd.mat'
+link_save = r'E:\Data\analysis_cm005\from_masks\Save_241106_CM005_unit10_32_upd_binning'
+tiff_file = r"E:\Data\241106_CM005\unit10\cor\1\unit10.tif"
+mask_folder = r"E:\Data\analysis_cm005\from_masks\Save_241106_CM005_unit10_32_upd_binning\MasksBinary.tif"
+output_csv = link_save + "\intensity_data.csv"
+
+
+sigma_value = 10
 deg_value = 5
-fs_value = 30.9
-height_value=0.2        # Minimum height of peaks (adjust as needed)
-prominence_value=0.1   # Minimum prominence of peaks
+fs_value = 52
+fps = 52
+height_value=0.56        # Minimum height of peaks (adjust as needed)
+prominence_value=0.52   # Minimum prominence of peaks
 distance_value=2
 cutoff_value = 5
 binning = True
 binning_factor = 2
 
-cols_list = ['Mask_0','Mask_50', 'Mask_61', 'Mask_43']
-cfu_list = ['CFU_0','CFU_50', 'CFU_61', 'CFU_43']
+cols_list = ['Mask_0','Mask_48', 'Mask_51', 'Mask_54','Mask_62']
 
-mat = scipy.io.loadmat(link_file_mat)
-cfu_to_tif_global(link_file_mat, link_save, list(mat.keys())[3], 2)
-pd_data, pd_data_df = get_data_global(link_file_mat, link_save, list(mat.keys())[3])
-pd_data_df = pd.DataFrame(pd_data_df)
-pd_data = pd.DataFrame(pd_data)
-pd_data_corr = pd_data-110
-pd_data_corr_baseline = calculate_baseline(pd_data_corr, sigma=sigma_value, deg = deg_value)
-pd_data_corr_df =pd.DataFrame()
-for col in pd_data_corr_baseline .columns:
-    pd_data_corr_df[col] = (pd_data_corr[col]-pd_data_corr_baseline[col])/pd_data_corr_baseline[col]
+output_csv = link_save + '\intensity_data'
+output_dir = link_save
+intensity_data = calculate_intensities_from_mask_tiff(
+     tiff_file=tiff_file,
+     mask_tiff_file=mask_folder,
+     output_csv=output_csv
+ )
+intensity_data_corr = pd.DataFrame()
+for col in intensity_data.columns:
+    intensity_data_corr[col] = intensity_data[col] - intensity_data[col].min() +50
+dff_data = calculate_dff(intensity_data_corr)
+#peak_indices, peak_counts_df = detect_peaks(dff_data, height=0.1, prominence=0.05, distance=20)
+#plot_dff_and_peaks(dff_data, peak_indices, output_dir)
+pd_data_corr = dff_data
 if binning==True:
     pd_data_corr = bin_dataframe(pd_data_corr, bin_factor=binning_factor)
     fs_value = fs_value/binning_factor
     print('Binning used')
 else:
     print('No binning used')
-pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg = deg_value)
-plot_and_save(pd_data_corr_df, pd_data_corr_df_baselinetocheck, link_save + '\corrected_baseline')
-pd_data_df = pd_data_df[cols_list]
+pd_data_corr_baseline = calculate_baseline(pd_data_corr, sigma=sigma_value, deg = deg_value)
+pd_data_corr_df = pd.DataFrame()
+for col in pd_data_corr_baseline .columns:
+    pd_data_corr_df[col] = (pd_data_corr[col]-pd_data_corr_baseline[col])/pd_data_corr_baseline[col]
+pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg = deg_value) 
+calm_regions, recommendations = run_analysis_pipeline(pd_data_corr_df, fs_value, calm_length=1, peak_threshold=1, output_dir=link_save)
+
 pd_data_corr = pd_data_corr[cols_list]
 pd_data_corr_df = pd_data_corr_df[cols_list]
 pd_data_corr_df_baselinetocheck = pd_data_corr_df_baselinetocheck[cols_list]
 pd_data_corr_baseline = pd_data_corr_baseline[cols_list]
+
+plot_and_save(pd_data_corr_df, pd_data_corr_df_baselinetocheck, link_save + '\corrected_baseline')
 output_dir = link_save + '\CFU_Peaks_calc_smooth'
 peak_indices, smoothed_data, peak_counts = detect_peaks_on_smoothed_data(pd_data_corr_df, 
                                                                          fs=fs_value, 
@@ -54,7 +71,7 @@ plot_peak_density_per_cfu(peak_indices, fs=fs_value, output_dir=link_save + '\CF
 save_cfu_analysis_with_report_v2(
     pd_data_corr_df, smoothed_data, pd_data_corr_df_baselinetocheck, peak_indices, link_save,
     link_folder, link_file_mat, link_save,
-    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value)
+    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value, binning, binning_factor)
 plot_combined_smoothed_and_peak_density(
      pd_data_corr_df, smoothed_data, peak_indices, fps=fs_value, 
      height_value=height_value, prominence_value=prominence_value, distance_value=distance_value, sigma_value=sigma_value,
@@ -62,4 +79,4 @@ plot_combined_smoothed_and_peak_density(
 overlap_df = compare_peak_times(
      peak_indices, tolerance_frames=1, fps=fs_value, output_path=link_save
  )
-
+plot_high_overlap_pairs(pd_data_corr_df, smoothed_data, peak_indices, overlap_df, 80, fs_value, link_save)
