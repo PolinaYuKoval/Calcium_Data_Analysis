@@ -123,7 +123,135 @@ def plot_and_save(df, baselines, output_dir, combined_filename="all_cfus_combine
     )
     fig_combined.write_html(combined_output_path)
     print(f"Saved combined graph as {combined_output_path}")
+def identify_calm_region(signal, fs, calm_length=2, peak_threshold=0.1):
+    """
+    Identifies the calm region of specified length with minimal standard deviation.
 
+    Parameters:
+        signal (np.ndarray): 1D array of the signal intensities.
+        fs (float): Sampling frequency in Hz (frames per second).
+        calm_length (float): Length of the calm region in seconds.
+        peak_threshold (float): Threshold for identifying peaks (optional).
+
+    Returns:
+        tuple: (start_index, end_index, calm_region_std) of the identified calm region.
+    """
+    calm_frames = int(calm_length * fs)
+    peaks, _ = find_peaks(signal, height=peak_threshold)
+    min_std = float('inf')
+    best_start = None
+    for start in range(0, len(signal) - calm_frames + 1):
+        end = start + calm_frames
+        region = signal[start:end]
+        if any((start <= peak < end) for peak in peaks):
+            continue
+        region_std = np.std(region)
+        if region_std < min_std:
+            min_std = region_std
+            best_start = start
+    if best_start is not None:
+        return best_start, best_start + calm_frames, min_std
+    else:
+        raise ValueError("No suitable calm region found.")
+
+
+def identify_calm_regions_for_df(df, fs, calm_length=2, peak_threshold=0.1):
+    """
+    Identifies calm regions for each ROI in the DataFrame.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame where each column represents a region of interest (ROI).
+        fs (float): Sampling frequency in Hz (frames per second).
+        calm_length (float): Length of the calm region in seconds.
+        peak_threshold (float): Threshold for identifying peaks (optional).
+
+    Returns:
+        pd.DataFrame: DataFrame containing the calm region statistics for each ROI.
+    """
+    calm_regions = []
+    for roi in df.columns:
+        signal = df[roi].values
+        try:
+            start_idx, end_idx, calm_std = identify_calm_region(signal, fs, calm_length, peak_threshold)
+            calm_regions.append({
+                "ROI": roi,
+                "Start_Index": start_idx,
+                "End_Index": end_idx,
+                "Calm_Std": calm_std
+            })
+        except ValueError:
+            print(f"No suitable calm region found for ROI: {roi}")
+            calm_regions.append({
+                "ROI": roi,
+                "Start_Index": None,
+                "End_Index": None,
+                "Calm_Std": None
+            })
+    return pd.DataFrame(calm_regions)
+
+def recommend_peak_params(df, calm_regions_df, multiplier=3):
+    """
+    Recommends height and prominence parameters based on calm region statistics.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame where each column represents an ROI.
+        calm_regions_df (pd.DataFrame): DataFrame containing calm region statistics for each ROI.
+        multiplier (float): Multiplier for standard deviation to recommend height and prominence.
+
+    Returns:
+        pd.DataFrame: DataFrame containing recommended parameters for each ROI.
+    """
+    recommendations = []
+    for _, row in calm_regions_df.iterrows():
+        roi = row["ROI"]
+        start_idx = row["Start_Index"]
+        end_idx = row["End_Index"]
+        if pd.isna(start_idx) or pd.isna(end_idx):
+            recommendations.append({
+                "ROI": roi,
+                "Recommended_Height": None,
+                "Recommended_Prominence": None
+            })
+            continue
+        calm_region = df[roi].iloc[start_idx:end_idx]
+        calm_std = calm_region.std()
+        calm_mean = calm_region.mean()
+        recommended_height = calm_mean + multiplier * calm_std
+        recommended_prominence = multiplier * calm_std
+        recommendations.append({
+            "ROI": roi,
+            "Recommended_Height": recommended_height,
+            "Recommended_Prominence": recommended_prominence
+        })
+    return pd.DataFrame(recommendations)
+def run_analysis_pipeline(df, fs, calm_length=2, peak_threshold=0.1, multiplier=3, output_dir="output"):
+    """
+    Runs the analysis pipeline: identify calm regions and recommend peak parameters.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame where each column represents an ROI.
+        fs (float): Sampling frequency in Hz (frames per second).
+        calm_length (float): Length of the calm region in seconds.
+        peak_threshold (float): Threshold for identifying peaks (optional).
+        multiplier (float): Multiplier for standard deviation to recommend height and prominence.
+        output_dir (str): Directory to save output CSV files.
+
+    Returns:
+        tuple: (calm_regions_df, recommendations_df)
+    """
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+    calm_regions_df = identify_calm_regions_for_df(df, fs, calm_length, peak_threshold)
+    calm_regions_csv = os.path.join(output_dir + "\calm_regions.csv")
+    calm_regions_df.to_csv(calm_regions_csv, index=False)
+    print(f"Calm regions saved to {calm_regions_csv}")
+    recommendations_df = recommend_peak_params(df, calm_regions_df, multiplier)
+    recommendations_csv = os.path.join(output_dir + "\peak_detection_recommendations.csv")
+    recommendations_df.to_csv(recommendations_csv, index=False)
+    print(f"Peak recommendations saved to {recommendations_csv}")
+    return calm_regions_df, recommendations_df
+
+    
 def detect_peaks(df, height=None, prominence=None, distance=None):
     """
     Detects peaks in each column of a DataFrame.
@@ -303,11 +431,7 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
     for cfu, indices in peak_indices.items():
         # Convert peak indices to time (seconds)
         peak_times = np.array(indices) / fs
-
-        # Create histogram bins
         peak_counts, bin_edges = np.histogram(peak_times, bins=bins)
-
-        # Create the Plotly bar plot
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=bin_edges[:-1],
@@ -316,8 +440,6 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
             marker=dict(color="blue", opacity=0.7),
             name="Peak Density"
         ))
-
-        # Update layout
         fig.update_layout(
             title=f"Peak Density for {cfu}",
             xaxis_title="Time (s)",
@@ -325,47 +447,54 @@ def plot_peak_density_per_cfu(peak_indices, fs, output_dir="peak_density_plots",
             template="plotly_white",
             bargap=0.1
         )
-
-        # Save the plot as HTML
         output_path = os.path.join(output_dir, f"peak_density_{cfu}.html")
         fig.write_html(output_path)
         print(f"Saved peak density plot for {cfu} to {output_path}")
         
 
-def calculate_intensities(tiff_file, mask_folder, output_csv):
+def calculate_intensities_from_mask_tiff(tiff_file, mask_tiff_file, output_csv):
     """
-    Calculate frame-wise intensities for each mask and save as a DataFrame.
+    Calculate frame-wise intensities for each mask from a single mask TIFF file and save as a DataFrame.
 
     Parameters:
         tiff_file (str): Path to the multi-frame TIFF file.
-        mask_folder (str): Path to the folder containing mask files as TIFFs.
+        mask_tiff_file (str): Path to the mask TIFF file containing multiple masks as frames.
         output_csv (str): Path to save the intensity DataFrame.
 
     Returns:
         pd.DataFrame: DataFrame containing frame-wise intensities for each mask.
     """
+    os.makedirs(output_csv, exist_ok=True)
+    # Load the TIFF data and mask file
     with tiff.TiffFile(tiff_file) as tif:
         tiff_data = tif.asarray()
 
-    print(f"Loaded TIFF with shape {tiff_data.shape} (frames, height, width)")
+    with tiff.TiffFile(mask_tiff_file) as mask_tif:
+        mask_data = mask_tif.asarray()
+
+    print(f"Loaded TIFF data with shape {tiff_data.shape} (frames, height, width)")
+    print(f"Loaded mask data with shape {mask_data.shape} (masks, height, width)")
+
+    # Ensure mask dimensions match the TIFF data dimensions
+    if mask_data.shape[1:] != tiff_data.shape[1:]:
+        raise ValueError(
+            f"Mask shape {mask_data.shape[1:]} does not match TIFF shape {tiff_data.shape[1:]}"
+        )
+
     num_frames = tiff_data.shape[0]
     intensity_data = pd.DataFrame(index=range(num_frames))
-    for mask_file in os.listdir(mask_folder):
-        if not mask_file.endswith('.tiff'):
-            continue
-        mask_path = os.path.join(mask_folder, mask_file)
-        with tiff.TiffFile(mask_path) as mask_tif:
-            mask = mask_tif.asarray().astype(bool)
-        if mask.shape != tiff_data.shape[1:]:
-            raise ValueError(f"Mask {mask_file} shape {mask.shape} does not match TIFF shape {tiff_data.shape[1:]}")
-        frame_intensities = [np.mean(frame[mask]) for frame in tiff_data]
-        mask_name = os.path.splitext(mask_file)[0]
-        intensity_data[mask_name] = frame_intensities
-    intensity_data.to_csv(output_csv)
+
+    # Calculate intensities for each mask
+    for i, mask in enumerate(mask_data):
+        mask_bool = mask.astype(bool)
+        frame_intensities = [np.mean(frame[mask_bool]) for frame in tiff_data]
+        intensity_data[f"Mask_{i}"] = frame_intensities
+
+    # Save the intensity data to a CSV
+    intensity_data.to_csv(output_csv+ '\intensity_data.csv', index=False)
     print(f"Saved intensity data to {output_csv}")
 
     return intensity_data
-    
 def crop_tiff_dimensions(tiff_data, crop_pixels=5):
     """
     Crop the second and third dimensions (height and width) of a TIFF file.
@@ -450,7 +579,7 @@ def plot_dff_and_peaks(dff_data, peak_indices, output_dir):
         fig_combined.add_trace(go.Scatter(
             x=peaks, y=dff_values[peaks], mode='markers', name=f"Peaks {col} ({len(peaks)})"
         ))
-    combined_output_path = os.path.join(output_dir, "combined_dff_peaks.html")
+    combined_output_path = os.path.join(output_dir, "_combined_dff_peaks.html")
     fig_combined.update_layout(
         title="Combined Delta F/F and Peaks for All Masks",
         xaxis_title="Frame",
