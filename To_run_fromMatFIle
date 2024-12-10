@@ -1,0 +1,80 @@
+##################Data (run from .mat files)########################################################
+####################################################################################################
+
+# 241202_CM005_rec1_more_unit0_32_crop
+link_folder = r'E:\Data\analysis_cm005'
+link_file_mat = r'E:\Data\analysis_cm005\241202_CM005_rec1_more_unit0_32_crop.mat'
+link_save = r'E:\Data\analysis_cm005\Save_241202_CM005_rec1_more_unit0_32_crop'
+sigma_value = 7
+deg_value = 5
+fs_value = 30.9
+height_value=0.2        # Minimum height of peaks (adjust as needed)
+prominence_value=0.1   # Minimum prominence of peaks
+distance_value=2
+cutoff_value = 5
+binning = True
+binning_factor = 2
+
+cols_list = ['Mask_0','Mask_50', 'Mask_61', 'Mask_43']
+cfu_list = ['CFU_0','CFU_50', 'CFU_61', 'CFU_43']
+
+mat = scipy.io.loadmat(link_file_mat)
+cfu_to_combined_tif_and_standard_plot(
+     cfu_link=link_file_mat,
+     output_tiff_path=link_save,
+     output_html_path=link_save,
+     cfu_global= list(mat.keys())[3],
+     index_2=2
+ )
+pd_data, pd_data_df = get_data_global(link_file_mat, link_save, list(mat.keys())[3])
+pd_data_df = pd.DataFrame(pd_data_df)
+pd_data = pd.DataFrame(pd_data)
+pd_data_corr = pd_data-110
+if binning==True:
+    pd_data_corr = bin_dataframe(pd_data_corr, bin_factor=binning_factor)
+    fs_value = fs_value/binning_factor
+    print('Binning used')
+else:
+    print('No binning used')
+
+pd_data_corr_baseline = calculate_baseline(pd_data_corr, sigma=sigma_value, deg = deg_value)
+pd_data_corr_df = pd.DataFrame()
+for col in pd_data_corr_baseline .columns:
+    pd_data_corr_df[col] = (pd_data_corr[col]-pd_data_corr_baseline[col])/pd_data_corr_baseline[col]
+pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg = deg_value)
+
+pd_data_corr = pd_data_corr[cols_list]
+pd_data_corr_df = pd_data_corr_df[cols_list]
+pd_data_corr_df_baselinetocheck = pd_data_corr_df_baselinetocheck[cols_list]
+pd_data_corr_baseline = pd_data_corr_baseline[cols_list]
+
+calm_regions, recommendations = run_analysis_pipeline(pd_data_corr_df, fs_value, calm_length=2, peak_threshold=150, output_dir=link_save)
+recommendations
+
+plot_and_save(pd_data_corr_df, pd_data_corr_df_baselinetocheck, link_save + '\corrected_baseline')
+output_dir = link_save + '\CFU_Peaks_calc_smooth'
+peak_indices, smoothed_data, peak_counts = detect_peaks_on_smoothed_data(pd_data_corr_df, 
+                                                                         fs=fs_value, 
+                                                                         cutoff=cutoff_value, 
+                                                                         height=height_value,        # Minimum height of peaks (adjust as needed)
+                                                                         prominence=prominence_value,   # Minimum prominence of peaks
+                                                                         distance=distance_value )
+print(peak_counts)
+plot_peaks_on_smoothed_data_with_baseline(pd_data_corr_df, 
+                                          smoothed_data, peak_indices, 
+                                          pd_data_corr_df_baselinetocheck, 
+                                          link_save + '\CFU_Peaks_calc_smooth', fs_value)
+plot_peak_density_per_cfu(peak_indices, fs=fs_value, output_dir=link_save + '\CFU_Peaks_dencity')
+save_cfu_analysis_with_report_v2(
+    pd_data_corr_df, smoothed_data, pd_data_corr_df_baselinetocheck, peak_indices, link_save,
+    link_folder, link_file_mat, link_save,
+    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value, binning, binning_factor)
+plot_combined_smoothed_and_peak_density(
+     pd_data_corr_df, smoothed_data, peak_indices, fps=fs_value, 
+     height_value=height_value, prominence_value=prominence_value, distance_value=distance_value, sigma_value=sigma_value,
+     output_path=link_save)
+overlap_df = compare_peak_times(
+     peak_indices, tolerance_frames=1, fps=fs_value, output_path=link_save
+ )
+
+
