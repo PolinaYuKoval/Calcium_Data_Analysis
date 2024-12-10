@@ -123,6 +123,7 @@ def plot_and_save(df, baselines, output_dir, combined_filename="all_cfus_combine
     )
     fig_combined.write_html(combined_output_path)
     print(f"Saved combined graph as {combined_output_path}")
+    
 def identify_calm_region(signal, fs, calm_length=2, peak_threshold=0.1):
     """
     Identifies the calm region of specified length with minimal standard deviation.
@@ -523,30 +524,6 @@ def calculate_dff(intensity_data):
     dff = (intensity_data - baselines) / baselines
     return dff
 
-'''
-def detect_peaks(dff_data, height=None, prominence=None, distance=None):
-    """
-    Detect peaks in Delta F/F data for each mask.
-
-    Parameters:
-        dff_data (pd.DataFrame): Delta F/F DataFrame.
-        height (float, optional): Minimum peak height.
-        prominence (float, optional): Minimum prominence of peaks.
-        distance (int, optional): Minimum distance between peaks.
-
-    Returns:
-        dict: A dictionary with column names as keys and detected peak indices as values.
-    """
-    peak_indices = {}
-
-    for col in dff_data.columns:
-        # Detect peaks
-        peaks, _ = find_peaks(dff_data[col].values, height=height, prominence=prominence, distance=distance)
-        peak_indices[col] = peaks
-
-    return peak_indices
-'''
-
 def plot_dff_and_peaks(dff_data, peak_indices, output_dir):
     """
     Plot Delta F/F data and detected peaks for each mask.
@@ -728,6 +705,9 @@ def plot_combined_smoothed_and_peak_density(
         sigma_value (float): Smoothing coefficient.
         output_path (str): Path to save the combined plot.
     """
+    output_path = output_path + '/combined_smoothed_peak_density'
+    os.makedirs(output_path, exist_ok=True)
+    
     for cfu in df.columns:
         original_data = df[cfu].values
         smoothed_data = smoothed_data_dict[cfu]
@@ -784,7 +764,7 @@ def plot_combined_smoothed_and_peak_density(
                 )
             ]
         )
-        fig.write_html(output_path + f"/combined_smoothed_peak_density_{cfu}.html")
+        fig.write_html(output_path + f"/{cfu}.html")
         print(f"Saved combined plot for {cfu} to {output_path}")
 
 def compare_peak_times(peak_indices, tolerance_frames, fps, output_path):
@@ -845,6 +825,7 @@ def plot_high_overlap_pairs(df, smoothed_data_dict, peak_indices, overlap_df, ov
         fps (float): Frames per second of the data.
         output_dir (str): Directory to save the plots.
     """
+    output_dir = output_dir + '/overlap'
     os.makedirs(output_dir, exist_ok=True)
     high_overlap_pairs = [
         (cfu_1, cfu_2) for cfu_1 in overlap_df.index for cfu_2 in overlap_df.columns
@@ -901,7 +882,7 @@ def plot_high_overlap_pairs(df, smoothed_data_dict, peak_indices, overlap_df, ov
             yaxis_title="Intensity",
             template="plotly_white"
         )
-        output_path = os.path.join(output_dir, f"overlap_{cfu_1}_{cfu_2}.html")
+        output_path = os.path.join(output_dir, f" overlap_{cfu_1}_{cfu_2}.html")
         fig.write_html(output_path)
         print(f"Saved high-overlap plot for {cfu_1} and {cfu_2} to {output_path}")
 
