@@ -989,25 +989,20 @@ def calculate_and_save_peak_amplitudes_with_context(df, peak_indices, fs, output
     stats = amplitude_df.groupby("Mask").Amplitude.agg(['mean', 'std', 'count'])
     stats["std"] = stats["std"].fillna(0)
     stats = stats.rename(columns={"mean": "Mean", "std": "Std", "count": "Count"})
-    fig, ax = plt.subplots(figsize=(10, 6))
     x = stats.index
     y = stats["Mean"]
     error = stats["Std"]
-
-    ax.bar(x, y, yerr=error, capsize=5, color="skyblue", edgecolor="black", alpha=0.8)
-    ax.set_title("Barplot of Peak Amplitudes with Error Bars", fontsize=14)
-    ax.set_xlabel("ROI", fontsize=12)
-    ax.set_ylabel("Amplitude", fontsize=12)
-    ax.grid(axis="y", linestyle="--", alpha=0.6)
-    for i, val in enumerate(y):
-        ax.text(i, val + error[i] + 0.2, f"{val:.2f}", ha="center", va="bottom", fontsize=10)
-    barplot_path = os.path.join(output_dir, "amplitude_barplot_with_error_bars.png")
-    plt.tight_layout()
-    plt.savefig(barplot_path, dpi=300)
-    plt.close()
+    fig = px.bar(
+        stats.reset_index(),
+        x="Mask",
+        y="Mean",
+        error_y="Std",
+        labels={"Mean": "Mean Amplitude", "Mask": "ROI"},
+        title="Barplot of Peak Amplitudes with Error Bars",
+        color="Mask",
+        template="plotly_white"
+    )
+    barplot_path = os.path.join(output_dir, "amplitude_barplot_with_error_bars.html")
+    fig.write_html(barplot_path)
     print(f"Barplot with error bars saved to {barplot_path}")
-
-    stats_csv_path = os.path.join(output_dir, "peak_amplitude_statistics.csv")
-    stats.to_csv(stats_csv_path)
-    print(f"Saved statistical analysis to {stats_csv_path}")
 
