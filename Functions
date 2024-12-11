@@ -944,3 +944,70 @@ def get_mask_overlap_table(tiff1_path, tiff2_path, output_csv_path, threshold=0.
     print(f"Overlap table saved to {output_csv_path}")
 
     return overlap_table
+
+def calculate_and_save_peak_amplitudes_with_context(df, peak_indices, fs, output_dir, context_before=5, context_after=0.5):
+    """
+    Calculate peak amplitudes using local minima and save peak context data, amplitudes, and stats.
+    Generate a barplot with error bars for the amplitudes.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    amplitudes = []
+    context_data = pd.DataFrame()
+
+    for col in df.columns:
+        data = df[col].values
+        peaks = peak_indices[col]
+        col_amplitudes = []
+        for peak in peaks:
+            start_window = max(0, peak - 3)
+            local_min = np.min(data[start_window:peak])
+            amplitude = data[peak] - local_min
+            col_amplitudes.append(amplitude)
+
+            start_context = max(0, peak - context_before)
+            end_context = min(len(data), peak + int(context_after * fs))
+            context_df = pd.DataFrame({
+                "Frame": np.arange(start_context, end_context),
+                "Time (s)": np.arange(start_context, end_context) / fs,
+                "Intensity": data[start_context:end_context],
+                "Mask": col,
+                "Peak Frame": peak,
+                "Peak Amplitude": amplitude
+            })
+            context_data = pd.concat([context_data, context_df], ignore_index=True)
+
+        amplitudes.extend([{"Mask": col, "Amplitude": amp} for amp in col_amplitudes])
+
+    amplitude_df = pd.DataFrame(amplitudes)
+    amplitude_csv_path = os.path.join(output_dir, "peak_amplitudes.csv")
+    amplitude_df.to_csv(amplitude_csv_path, index=False)
+    print(f"Saved peak amplitudes to {amplitude_csv_path}")
+
+    context_csv_path = os.path.join(output_dir, "peak_context_data.csv")
+    context_data.to_csv(context_csv_path, index=False)
+    print(f"Saved peak context data to {context_csv_path}")
+    stats = amplitude_df.groupby("Mask").Amplitude.agg(['mean', 'std', 'count'])
+    stats["std"] = stats["std"].fillna(0)
+    stats = stats.rename(columns={"mean": "Mean", "std": "Std", "count": "Count"})
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = stats.index
+    y = stats["Mean"]
+    error = stats["Std"]
+
+    ax.bar(x, y, yerr=error, capsize=5, color="skyblue", edgecolor="black", alpha=0.8)
+    ax.set_title("Barplot of Peak Amplitudes with Error Bars", fontsize=14)
+    ax.set_xlabel("ROI", fontsize=12)
+    ax.set_ylabel("Amplitude", fontsize=12)
+    ax.grid(axis="y", linestyle="--", alpha=0.6)
+    for i, val in enumerate(y):
+        ax.text(i, val + error[i] + 0.2, f"{val:.2f}", ha="center", va="bottom", fontsize=10)
+    barplot_path = os.path.join(output_dir, "amplitude_barplot_with_error_bars.png")
+    plt.tight_layout()
+    plt.savefig(barplot_path, dpi=300)
+    plt.close()
+    print(f"Barplot with error bars saved to {barplot_path}")
+
+    stats_csv_path = os.path.join(output_dir, "peak_amplitude_statistics.csv")
+    stats.to_csv(stats_csv_path)
+    print(f"Saved statistical analysis to {stats_csv_path}")
+
