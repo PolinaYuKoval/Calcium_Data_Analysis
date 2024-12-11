@@ -319,6 +319,8 @@ def low_pass_filter(data, cutoff, fs, order=4):
         np.ndarray: The filtered data.
     """
     nyquist = 0.5 * fs  # Nyquist frequency
+    if not (0 < cutoff < nyquist):
+        raise ValueError(f"Cutoff frequency must be between 0 and Nyquist frequency ({nyquist}). Provided: {cutoff}")
     normal_cutoff = cutoff / nyquist  # Normalize cutoff frequency
     b, a = butter(order, normal_cutoff, btype='low', analog=False)  # Design filter
     filtered_data = filtfilt(b, a, data)  # Apply filter
@@ -1025,7 +1027,6 @@ def run_analysis_pipeline_with_recommended_params(
         tuple: (calm_regions_df, recommendations_df, peak_indices)
     """
     os.makedirs(output_dir, exist_ok=True)
-    # Identify calm regions and recommend parameters
     calm_regions_df = identify_calm_regions_for_df(df, fs, calm_length, peak_threshold)
     calm_regions_csv = os.path.join(output_dir, "calm_regions.csv")
     calm_regions_df.to_csv(calm_regions_csv, index=False)
