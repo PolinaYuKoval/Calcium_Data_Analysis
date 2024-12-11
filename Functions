@@ -1006,3 +1006,128 @@ def calculate_and_save_peak_amplitudes_with_context(df, peak_indices, fs, output
     fig.write_html(barplot_path)
     print(f"Barplot with error bars saved to {barplot_path}")
 
+def run_analysis_pipeline_with_recommended_params(
+    df, fs, calm_length=2, peak_threshold=0.1, multiplier=3, output_dir="output"
+):
+    """
+    Runs the analysis pipeline: identify calm regions, recommend peak parameters,
+    and detect peaks using those parameters.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame where each column represents an ROI.
+        fs (float): Sampling frequency in Hz (frames per second).
+        calm_length (float): Length of the calm region in seconds.
+        peak_threshold (float): Threshold for identifying peaks (optional).
+        multiplier (float): Multiplier for standard deviation to recommend height and prominence.
+        output_dir (str): Directory to save output CSV files.
+
+    Returns:
+        tuple: (calm_regions_df, recommendations_df, peak_indices)
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    # Identify calm regions and recommend parameters
+    calm_regions_df = identify_calm_regions_for_df(df, fs, calm_length, peak_threshold)
+    calm_regions_csv = os.path.join(output_dir, "calm_regions.csv")
+    calm_regions_df.to_csv(calm_regions_csv, index=False)
+    print(f"Calm regions saved to {calm_regions_csv}")
+
+    recommendations_df = recommend_peak_params(df, calm_regions_df, multiplier)
+    recommendations_csv = os.path.join(output_dir, "peak_detection_recommendations.csv")
+    recommendations_df.to_csv(recommendations_csv, index=False)
+    print(f"Peak recommendations saved to {recommendations_csv}")
+    peak_indices = {}
+    for _, row in recommendations.iterrows():
+        roi = row["ROI"]
+        if pd.notna(row["Recommended_Height"]) and pd.notna(row["Recommended_Prominence"]):
+            peak_indices_tmp, smoothed_data_tmp, _ = detect_peaks_on_smoothed_data(
+                pd_data_corr_df[[roi]], 
+                fs=fs_value, 
+                cutoff=cutoff_value, 
+                height=row["Recommended_Height"], 
+                prominence=row["Recommended_Prominence"], 
+                distance=distance_value
+            )
+            peak_indices[roi] = peak_indices_tmp[roi]
+            smoothed_data[roi] = smoothed_data_tmp[roi]
+
+    return calm_regions_df, recommendations_df, peak_indices
+
+def save_cfu_analysis_with_report_v3(
+    df, smoothed_data_dict, baseline_dict, peak_indices, recommendations_df, output_dir,
+    link_folder, link_file_mat, link_save, sigma_value, deg_value, fs_value, binning, binning_factor
+):
+    """
+    Saves the CFU analysis results to CSV files and generates a detailed TXT report,
+    including recommended parameters for each mask.
+
+    Parameters:
+        df (pd.DataFrame): Original CFU DataFrame.
+        smoothed_data_dict (dict): Dictionary containing smoothed data for each CFU.
+        baseline_dict (dict): Dictionary containing baseline data for each CFU.
+        peak_indices (dict): Dictionary containing indices of detected peaks for each CFU.
+        recommendations_df (pd.DataFrame): DataFrame of recommended parameters.
+        output_dir (str): Directory to save the CSV files and report.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    cfu_analysis_df = pd.DataFrame()
+    for cfu in df.columns:
+        original_data = df[cfu]
+        smoothed_data = smoothed_data_dict[cfu]
+        baseline_data = baseline_dict[cfu]
+        peak_mask = np.zeros(len(smoothed_data), dtype=int)
+        peak_mask[peak_indices[cfu]] = 1  # Mark peaks as 1, others as 0
+
+        cfu_data = pd.DataFrame({
+            "CFU": cfu,
+            "Original CFU Data": original_data,
+            "Smoothed CFU Data": smoothed_data,
+            "Baseline CFU Data": baseline_data,
+            "Detected Peaks (Smoothed)": peak_mask
+        })
+        cfu_analysis_df = pd.concat([cfu_analysis_df, cfu_data], ignore_index=True)
+    cfu_analysis_csv_path = os.path.join(output_dir, "cfu_analysis.csv")
+    cfu_analysis_df.to_csv(cfu_analysis_csv_path, index=False)
+    print(f"Saved CFU analysis to {cfu_analysis_csv_path}")
+
+    peaks_data = []
+    for cfu, indices in peak_indices.items():
+        peaks_data.append({"CFU": cfu, "Detected Peak Count": len(indices)})
+
+    peaks_df = pd.DataFrame(peaks_data)
+    peaks_csv_path = os.path.join(output_dir, "detected_peaks_summary.csv")
+    peaks_df.to_csv(peaks_csv_path, index=False)
+    print(f"Saved detected peaks summary to {peaks_csv_path}")
+
+    report_path = os.path.join(output_dir, "analysis_report.txt")
+    with open(report_path, "w") as report_file:
+        report_file.write("Analysis Report\n")
+        report_file.write("=" * 40 + "\n\n")
+        report_file.write("Links and Paths:\n")
+        report_file.write(f"Data Folder: {link_folder}\n")
+        report_file.write(f"MAT File: {link_file_mat}\n")
+        report_file.write(f"Save Folder: {link_save}\n\n")
+        report_file.write("Coefficients Used:\n")
+        report_file.write(f"Smoothing Sigma Value: {sigma_value}\n")
+        report_file.write(f"Baseline Degree: {deg_value}\n")
+        report_file.write(f"Frames Per Second (FPS): {fs_value}\n")
+        report_file.write(f"Binning: {binning}\n\n")
+        report_file.write(f"Binning Factor: {binning_factor}\n\n")
+        report_file.write(f"Total Length of Data (Mask_0): {len(df['Mask_0'])}\n")
+        report_file.write("\nNumber of Peaks per Mask:\n")
+        for cfu, indices in peak_indices.items():
+            report_file.write(f"- {cfu}: {len(indices)} peaks\n")
+        report_file.write("\nRecommended Peak Detection Parameters:\n")
+        for _, row in recommendations_df.iterrows():
+            report_file.write(f"- {row['ROI']}:\n")
+            report_file.write(f"  Height: {row['Recommended_Height']}\n")
+            report_file.write(f"  Prominence: {row['Recommended_Prominence']}\n")
+        report_file.write("\nFiles Saved:\n")
+        report_file.write(f"- CFU Analysis: {cfu_analysis_csv_path}\n")
+        report_file.write(f"- Peaks Summary: {peaks_csv_path}\n")
+        report_file.write(f"- Recommendations: {os.path.join(output_dir, 'peak_detection_recommendations.csv')}\n")
+        report_file.write("\nDate and Time of Analysis:\n")
+        report_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        report_file.write("\nOutput Folder:\n")
+        report_file.write(f"{output_dir}\n")
+
+    print(f"Saved analysis report to {report_path}")
