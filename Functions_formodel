@@ -1,0 +1,436 @@
+
+def load_data_from_generated_signals(num_positive, num_negative, length=1000, fs=30):
+    """
+    Generate and load data for training.
+    """
+    positive_signals = [generate_challenging_positive_signal(length=length, fs=fs) for _ in range(num_positive)]
+    negative_signals = [generate_challenging_negative_signal(length=length, fs=fs) for _ in range(num_negative)]
+
+    positive_labels = [1] * len(positive_signals)
+    negative_labels = [0] * len(negative_signals)
+
+    features = np.array(positive_signals + negative_signals)
+    labels = np.array(positive_labels + negative_labels)
+
+    return features, labels
+
+def train_model(features, labels, model_save_path):
+    """
+    Train a Random Forest model on the provided features and labels.
+    """
+    X_train, X_val, y_train, y_val = train_test_split(features, labels, test_size=0.2, random_state=42)
+
+    print(f"Training Set Size: {X_train.shape}")
+    print(f"Validation Set Size: {X_val.shape}")
+
+    rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_classifier.fit(X_train, y_train)
+
+    y_pred = rf_classifier.predict(X_val)
+    print("Validation Set Evaluation:")
+    print("Classification Report:\n", classification_report(y_val, y_pred))
+    print("Confusion Matrix:\n", confusion_matrix(y_val, y_pred))
+
+    joblib.dump(rf_classifier, model_save_path)
+    print(f"Model saved to {model_save_path}")
+
+def generate_synthetic_calcium_signal(length=1000, num_peaks=10, noise_level=0.1, rise_frames=2, decay_frames=50):
+    """
+    Generate a synthetic calcium signal with peaks and noise.
+
+    Parameters:
+        length (int): Length of the signal (number of frames).
+        num_peaks (int): Number of peaks to generate.
+        noise_level (float): Noise level (fraction of signal amplitude).
+        rise_frames (int): Number of frames for the rise phase of the peak.
+        decay_frames (int): Number of frames for the decay phase of the peak.
+
+    Returns:
+        np.ndarray: Synthetic calcium signal.
+        np.ndarray: Indices of the peaks in the signal.
+    """
+    signal = np.zeros(length)
+    peak_indices = np.random.choice(
+        np.arange(rise_frames, length - decay_frames),
+        size=num_peaks,
+        replace=False
+    )
+    peak_indices.sort()
+
+    for peak in peak_indices:
+        rise = np.linspace(0, 1, rise_frames)
+        decay = np.exp(-np.linspace(0, 5, decay_frames))
+        peak_shape = np.concatenate([rise, decay])
+        amplitude = np.random.uniform(0.5, 1.5)
+        signal[peak - rise_frames : peak + decay_frames] += amplitude * peak_shape[:min(len(peak_shape), length - (peak - rise_frames))]
+
+    noise = noise_level * np.random.normal(size=signal.shape)
+    signal += noise
+
+    return signal, peak_indices
+
+
+def generate_challenging_negative_signal_with_labels(length=1000, noise_level=0.2):
+    """
+    Generate a challenging negative calcium signal with pseudo-bursts and sinusoidal noise,
+    along with corresponding labels (all zeros for negative signals).
+
+    Parameters:
+        length (int): Length of the signal (number of frames).
+        noise_level (float): Standard deviation of noise.
+
+    Returns:
+        np.ndarray: Generated signal.
+        np.ndarray: Labels (all zeros for negative signals).
+    """
+    signal = np.zeros(length)
+    num_pseudo_bursts = np.random.randint(5, 10)
+    pseudo_burst_length = np.random.randint(20, 60)  # Burst length in frames
+    for _ in range(num_pseudo_bursts):
+        start = np.random.randint(0, length - pseudo_burst_length)
+        pseudo_burst = np.sin(np.linspace(0, np.pi, pseudo_burst_length)) * np.random.uniform(0.1, 0.3)
+        end = min(length, start + len(pseudo_burst))
+        signal[start:end] += pseudo_burst[:end - start]
+
+    sinusoidal_noise_length = length  # Sinusoidal noise spans the full length of the signal
+    sinusoidal_noise = np.sin(np.linspace(0, 2 * np.pi, sinusoidal_noise_length)) * 0.2
+    signal += sinusoidal_noise
+
+    noise = noise_level * np.random.normal(size=signal.shape)
+    signal += noise
+
+    labels = np.zeros(length, dtype=int)  # All zeros for negative signals
+    return signal, labels
+
+
+def generate_datasets_with_positive_and_negative_labels(
+    output_dir, num_training=100, num_testing=300, fs_range=(30, 64), length=6000, **kwargs
+):
+    """
+    Generate datasets with both positive (with peaks) and negative (no valid peaks) labels.
+
+    Parameters:
+        output_dir (str): Directory to save datasets.
+        num_training (int): Number of training files.
+        num_testing (int): Number of testing files.
+        fs_range (tuple): Range of sampling frequencies (Hz).
+        length (int): Length of each signal (number of time points).
+    """
+    training_dir = os.path.join(output_dir, "Training")
+    testing_dir = os.path.join(output_dir, "Testing")
+    os.makedirs(training_dir, exist_ok=True)
+    os.makedirs(testing_dir, exist_ok=True)
+
+    for dataset, num_files in zip([training_dir, testing_dir], [num_training, num_testing]):
+        for i in range(num_files):
+            signals = []
+            peak_labels = []
+            fs = np.random.uniform(*fs_range)
+            for _ in range(1):  # Each file contains 5 signals
+                # Generate a mix of positive and negative signals
+                if np.random.rand() > 0.05:  # 50% chance of generating positive signal
+                    signal, peaks = generate_synthetic_calcium_signal(length=length)
+                    label = np.zeros(length)
+                    label[peaks] = 1  # Mark peaks as 1
+                else:  # Generate negative signal
+                    signal, label = generate_challenging_negative_signal_with_labels(length=length)
+
+                signals.append(signal)
+                peak_labels.append(label)
+
+            signal_df = pd.DataFrame(signals).T
+            label_df = pd.DataFrame(peak_labels).T
+            signal_df.to_csv(os.path.join(dataset, f"Dataset_{i+1}_signals.csv"), index=False)
+            label_df.to_csv(os.path.join(dataset, f"Dataset_{i+1}_labels.csv"), index=False)
+
+    print(f"Datasets with positive and negative labels saved to {output_dir}")
+
+def train_peak_detection_model(positive_dir, negative_dir, model_save_path, window_size=10, test_size=0.2, class_weight='balanced'):
+    """
+    Train a Random Forest model to identify calcium signal peaks.
+
+    Parameters:
+        positive_dir (str): Directory containing positive labeled data.
+        negative_dir (str): Directory containing negative labeled data.
+        model_save_path (str): Path to save the trained Random Forest model.
+        window_size (int): Size of the window around peaks for feature extraction.
+        test_size (float): Proportion of the data to reserve for testing.
+
+    Returns:
+        None
+    """
+    positive_features, positive_labels = load_labeled_data(positive_dir, label=1, window_size=window_size)
+    negative_features, negative_labels = load_labeled_data(negative_dir, label=0, window_size=window_size)
+    features = np.vstack((positive_features, negative_features))
+    labels = np.hstack((positive_labels, negative_labels))
+    X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=test_size, random_state=420)
+    model = RandomForestClassifier(n_estimators=n_estimators, random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    print("Model Evaluation Report:")
+    print(classification_report(y_test, y_pred))
+    joblib.dump(model, model_save_path)
+    print(f"Trained model saved to {model_save_path}")
+
+def load_signals_and_labels_from_folder(signal_folder, label_folder, window_size=10):
+    """
+    Load signals and labels from separate folders and prepare features and labels.
+
+    Parameters:
+        signal_folder (str): Path to the folder containing signal files.
+        label_folder (str): Path to the folder containing label files.
+        window_size (int): Size of the window around each frame for feature extraction.
+
+    Returns:
+        np.ndarray: Features extracted from the signals.
+        np.ndarray: Corresponding labels for the features.
+    """
+    features = []
+    labels = []
+
+    signal_files = sorted(f for f in os.listdir(signal_folder) if f.endswith("_signals.csv"))
+    label_files = sorted(f for f in os.listdir(label_folder) if f.endswith("_labels.csv"))
+
+    for signal_file, label_file in zip(signal_files, label_files):
+        signal_path = os.path.join(signal_folder, signal_file)
+        label_path = os.path.join(label_folder, label_file)
+
+        signal_data = pd.read_csv(signal_path).values
+        label_data = pd.read_csv(label_path).values
+
+        # Ensure signals and labels align
+        if signal_data.shape != label_data.shape:
+            raise ValueError(f"Mismatch between signal and label dimensions for {signal_file} and {label_file}")
+
+        for trace_idx in range(signal_data.shape[1]):  # Process each trace separately
+            signal = signal_data[:, trace_idx]
+            label = label_data[:, trace_idx]
+
+            for i in range(len(signal)):
+                start = max(0, i - window_size)
+                end = min(len(signal), i + window_size + 1)
+                window = np.zeros(2 * window_size + 1)
+                valid_range = slice(window_size - (i - start), window_size + (end - i))
+                window[valid_range] = signal[start:end]
+
+                features.append(window)
+                labels.append(label[i])
+
+    return np.array(features), np.array(labels)
+def train_model_from_generated_data(training_signal_dir, training_label_dir, 
+                                    testing_signal_dir, testing_label_dir, 
+                                    model_save_path, window_size=10):
+    """
+    Train a Random Forest model using signals and separate labels.
+
+    Parameters:
+        training_signal_dir (str): Directory containing training signal files.
+        training_label_dir (str): Directory containing training label files.
+        testing_signal_dir (str): Directory containing testing signal files.
+        testing_label_dir (str): Directory containing testing label files.
+        model_save_path (str): Path to save the trained model.
+        window_size (int): Size of the window around each frame for feature extraction.
+
+    Returns:
+        None
+    """
+    print("Loading training data...")
+    train_features, train_labels = load_signals_and_labels_from_folder(
+        training_signal_dir, training_label_dir, window_size
+    )
+    print("Loading testing data...")
+    test_features, test_labels = load_signals_and_labels_from_folder(
+        testing_signal_dir, testing_label_dir, window_size
+    )
+    print("Training the model...")
+    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
+    model.fit(train_features, train_labels)
+    print("Evaluating the model...")
+    test_predictions = model.predict(test_features)
+    print(classification_report(test_labels, test_predictions))
+    joblib.dump(model, model_save_path)
+    print(f"Trained model saved to {model_save_path}")
+
+def generate_synthetic_dataset(output_dir, num_files=100, length=1000, num_peaks=20, noise_level=0.2):
+    """
+    Generate synthetic calcium signal datasets with labels.
+
+    Parameters:
+        output_dir (str): Directory to save synthetic signal and label files.
+        num_files (int): Number of synthetic files to generate.
+        length (int): Length of each synthetic signal.
+        num_peaks (int): Number of peaks per signal.
+        noise_level (float): Noise level in the signals.
+
+    Returns:
+        None
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i in range(num_files):
+        signals = []
+        labels = []
+
+        for _ in range(5):  # Generate 5 traces per file
+            signal, peaks = generate_synthetic_calcium_signal(
+                length=length, num_peaks=num_peaks, noise_level=noise_level
+            )
+            label = np.zeros(length, dtype=int)
+            label[peaks] = 1
+
+            signals.append(signal)
+            labels.append(label)
+
+        signal_df = pd.DataFrame(signals).T
+        label_df = pd.DataFrame(labels).T
+
+        signal_df.to_csv(os.path.join(output_dir, f"Dataset_{i+1}_signals.csv"), index=False)
+        label_df.to_csv(os.path.join(output_dir, f"Dataset_{i+1}_labels.csv"), index=False)
+
+    print(f"Synthetic datasets saved to {output_dir}")
+    
+def synthetic_peak_detection_with_fixed_params(
+    output_dir, num_files=100, length=1000, num_peaks=100, noise_level=0.1, fs=30, tolerance=1
+):
+    """
+    Workflow for generating synthetic files, detecting peaks with fixed parameters, and evaluating results.
+
+    Parameters:
+        output_dir (str): Directory to save synthetic files and results.
+        num_files (int): Number of synthetic datasets to generate.
+        length (int): Length of each synthetic signal.
+        num_peaks (int): Number of peaks per signal.
+        noise_level (float): Noise level in the signals.
+        fs (float): Sampling frequency (frames per second).
+        tolerance (int): Tolerance in frames for matching peaks.
+
+    Returns:
+        None
+    """
+    signal_folder = os.path.join(output_dir, "Signals")
+    label_folder = os.path.join(output_dir, "Signals")
+    plot_folder = os.path.join(output_dir, "Plots")
+    os.makedirs(signal_folder, exist_ok=True)
+    os.makedirs(label_folder, exist_ok=True)
+    os.makedirs(plot_folder, exist_ok=True)
+    generate_synthetic_dataset(signal_folder, num_files, length, num_peaks, noise_level)
+    metrics_df = evaluate_with_fixed_params(
+        signal_folder, label_folder, plot_folder, fs, height=0.6, prominence=0.6, tolerance=tolerance
+    )
+    metrics_summary_path = os.path.join(output_dir, "metrics_summary.csv")
+    metrics_df.to_csv(metrics_summary_path, index=False)
+    print(f"Metrics summary saved to {metrics_summary_path}")
+
+
+def evaluate_with_fixed_params(
+    signal_folder, label_folder, plot_folder, fs, height=0.6, prominence=0.6, tolerance=1
+):
+    """
+    Evaluate peak detection performance using fixed height and prominence parameters.
+
+    Parameters:
+        signal_folder (str): Folder containing signal files (CSV).
+        label_folder (str): Folder containing label files (CSV).
+        plot_folder (str): Folder to save plots.
+        fs (float): Sampling frequency (frames per second).
+        height (float): Fixed height parameter for peak detection.
+        prominence (float): Fixed prominence parameter for peak detection.
+        tolerance (int): Tolerance for matching peaks in frames.
+
+    Returns:
+        pd.DataFrame: Metrics summary including TP, FP, FN, Precision, Recall, and F1.
+    """
+    os.makedirs(plot_folder, exist_ok=True)
+
+    all_metrics = []
+    signal_files = sorted(f for f in os.listdir(signal_folder) if f.endswith("_signals.csv"))
+    label_files = sorted(f for f in os.listdir(label_folder) if f.endswith("_labels.csv"))
+    if not signal_files or not label_files:
+        raise ValueError("No signal or label files found. Ensure the correct folder structure.")
+    for signal_file, label_file in zip(signal_files, label_files):
+        signal_path = os.path.join(signal_folder, signal_file)
+        label_path = os.path.join(label_folder, label_file)
+        signal_data = pd.read_csv(signal_path)
+        label_data = pd.read_csv(label_path)
+        if signal_data.shape != label_data.shape:
+            raise ValueError(f"Mismatch in dimensions for {signal_file} and {label_file}")
+        print(f"Processing {signal_file}: {signal_data.shape} signals, {label_data.shape} labels")
+        for trace in signal_data.columns:
+            signal = signal_data[trace].values
+            true_labels = np.where(label_data[trace].values == 1)[0]
+            peaks, _ = find_peaks(signal, height=height, prominence=prominence)
+            print(f"Trace: {trace}, Detected Peaks: {peaks}, True Labels: {true_labels}")
+            tp, fp, fn = evaluate_peaks(true_labels, peaks, tolerance)
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+            all_metrics.append({
+                "File": signal_file,
+                "Trace": trace,
+                "TP": tp,
+                "FP": fp,
+                "FN": fn,
+                "Precision": precision,
+                "Recall": recall,
+                "F1": f1,
+                "Height": height,
+                "Prominence": prominence
+            })
+            plot_signal_with_peaks(signal, true_labels, peaks, fs, plot_folder, signal_file, trace, height, prominence)
+    metrics_df = pd.DataFrame(all_metrics)
+    if metrics_df.empty:
+        print("Warning: No metrics generated. Check if peaks are being detected or if signals are loaded correctly.")
+    return metrics_df
+
+def evaluate_peaks(true_labels, detected_indices, tolerance):
+    """
+    Evaluate detected peaks against true labels with a tolerance.
+
+    Parameters:
+        true_labels (np.ndarray): Ground truth peak indices.
+        detected_indices (np.ndarray): Detected peak indices.
+        tolerance (int): Tolerance for matching peaks.
+
+    Returns:
+        tuple: (TP, FP, FN)
+    """
+    tp = sum(any(abs(d - t) <= tolerance for t in true_labels) for d in detected_indices)
+    fp = len(detected_indices) - tp
+    fn = len(true_labels) - tp
+    return tp, fp, fn
+
+
+def plot_signal_with_peaks(signal, true_labels, detected_indices, fs, plot_folder, signal_file, trace, height, prominence):
+    """
+    Plot signal with true and detected peaks.
+
+    Parameters:
+        signal (np.ndarray): Original signal.
+        true_labels (np.ndarray): Ground truth peak indices.
+        detected_indices (np.ndarray): Detected peak indices.
+        fs (float): Sampling frequency.
+        plot_folder (str): Directory to save plots.
+        signal_file (str): File name of the signal.
+        trace (str): Trace name.
+        height (float): Recommended height for peaks.
+        prominence (float): Recommended prominence for peaks.
+    """
+    time = np.arange(len(signal)) / fs
+    plt.figure(figsize=(12, 6))
+    plt.plot(time, signal, label="Signal", color="blue")
+    plt.scatter(time[true_labels], signal[true_labels], color="green", label="True Peaks", zorder=3)
+    plt.scatter(time[detected_indices], signal[detected_indices], color="red", label="Detected Peaks", zorder=3)
+    plt.title(f"Trace: {trace} | Height: {height:.2f}, Prominence: {prominence:.2f}")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Intensity")
+    plt.legend()
+    plt.grid()
+    output_path = os.path.join(plot_folder, f"{signal_file}_{trace}_peaks.png")
+    plt.savefig(output_path)
+    plt.close()
+    print(f"Saved plot for {trace} in {signal_file} to {output_path}")
+
+synthetic_peak_detection_with_fixed_params(
+    output_dir = r'E:\Data\analysis_cm005\from_masks\synthetic_peak_detect', num_files=200, length=6000, num_peaks=150, noise_level=0.1, fs=60, tolerance=1
+)
