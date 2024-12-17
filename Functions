@@ -38,26 +38,7 @@ def cfu_to_combined_tif_and_standard_plot(cfu_link, output_tiff_path, output_htm
     combined_tiff_path = os.path.join(output_tiff_path, 'MasksBinary.tif')
     tiff.imwrite(combined_tiff_path, np.stack(masks, axis=0).astype(np.uint8))
     print(f"Combined binary masks saved to {combined_tiff_path}")
-    fig = go.Figure()
 
-    for i, mask in enumerate(masks):
-        fig.add_trace(
-            go.Image(
-                z=mask,
-                name=f"Mask {i}",
-                opacity=0.5
-            )
-        )
-    fig.update_layout(
-        title="Overlapped Binary Masks",
-        xaxis_title="X",
-        yaxis_title="Y",
-        template="plotly_white",
-        legend_title="Masks"
-    )
-    combined_html_path = os.path.join(output_html_path, 'OverlappedBinaryMasks.html')
-    fig.write_html(combined_html_path)
-    print(f"Overlapped binary plot saved to {combined_html_path}")
 def get_data_global(cfu_link, path_to_save, cfu_global = 'cfuInfo1'):
     """
     Converts a CFU MATLAB data to a TIFF image and saves it.
@@ -498,6 +479,7 @@ def calculate_intensities_from_mask_tiff(tiff_file, mask_tiff_file, output_csv):
     print(f"Saved intensity data to {output_csv}")
 
     return intensity_data
+
 def crop_tiff_dimensions(tiff_data, crop_pixels=5):
     """
     Crop the second and third dimensions (height and width) of a TIFF file.
@@ -607,88 +589,6 @@ def plot_and_save_intensities(intensity_data, smoothed_data, peak_indices, outpu
     fig_combined.write_html(combined_output_path)
     print(f"Saved combined intensity and peaks plot to {combined_output_path}")
 
-def save_cfu_analysis_with_report_v2(
-    df, smoothed_data_dict, baseline_dict, peak_indices, output_dir,
-    link_folder, link_file_mat, link_save,
-    sigma_value, deg_value, fs_value, height_value, prominence_value, distance_value, binning, binning_factor
-):
-    """
-    Saves the CFU analysis results to CSV files and generates a detailed TXT report.
-
-    Parameters:
-        df (pd.DataFrame): Original CFU DataFrame.
-        smoothed_data_dict (dict): Dictionary containing smoothed data for each CFU.
-        baseline_dict (dict): Dictionary containing baseline data for each CFU.
-        peak_indices (dict): Dictionary containing indices of detected peaks for each CFU.
-        output_dir (str): Directory to save the CSV files and report.
-        link_folder (str): Folder containing the data.
-        link_file_mat (str): Path to the original MAT file.
-        link_save (str): Folder where files are saved.
-        sigma_value (float): Smoothing sigma value.
-        deg_value (int): Degree of baseline correction.
-        fs_value (float): Frames per second of the data.
-        height_value (float): Minimum peak height for detection.
-        prominence_value (float): Minimum peak prominence for detection.
-        distance_value (int): Minimum distance between peaks.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    cfu_analysis_df = pd.DataFrame()
-    for cfu in df.columns:
-        original_data = df[cfu]
-        smoothed_data = smoothed_data_dict[cfu]
-        baseline_data = baseline_dict[cfu]
-        peak_mask = np.zeros(len(smoothed_data), dtype=int)
-        peak_mask[peak_indices[cfu]] = 1  # Mark peaks as 1, others as 0
-
-        cfu_data = pd.DataFrame({
-            "CFU": cfu,
-            "Original CFU Data": original_data,
-            "Smoothed CFU Data": smoothed_data,
-            "Baseline CFU Data": baseline_data,
-            "Detected Peaks (Smoothed)": peak_mask
-        })
-        cfu_analysis_df = pd.concat([cfu_analysis_df, cfu_data], ignore_index=True)
-    cfu_analysis_csv_path = os.path.join(output_dir, "cfu_analysis.csv")
-    cfu_analysis_df.to_csv(cfu_analysis_csv_path, index=False)
-    print(f"Saved CFU analysis to {cfu_analysis_csv_path}")
-    peaks_data = []
-    for cfu, indices in peak_indices.items():
-        peaks_data.append({"CFU": cfu, "Detected Peak Count": len(indices)})
-
-    peaks_df = pd.DataFrame(peaks_data)
-    peaks_csv_path = os.path.join(output_dir, "detected_peaks_summary.csv")
-    peaks_df.to_csv(peaks_csv_path, index=False)
-    print(f"Saved detected peaks summary to {peaks_csv_path}")
-    report_path = os.path.join(output_dir, "analysis_report.txt")
-    with open(report_path, "w") as report_file:
-        report_file.write("Analysis Report\n")
-        report_file.write("=" * 40 + "\n\n")
-        report_file.write("Links and Paths:\n")
-        report_file.write(f"Data Folder: {link_folder}\n")
-        report_file.write(f"MAT File: {link_file_mat}\n")
-        report_file.write(f"Save Folder: {link_save}\n\n")
-        report_file.write("Coefficients Used:\n")
-        report_file.write(f"Smoothing Sigma Value: {sigma_value}\n")
-        report_file.write(f"Baseline Degree: {deg_value}\n")
-        report_file.write(f"Frames Per Second (FPS): {fs_value}\n")
-        report_file.write(f"Peak Detection Height: {height_value}\n")
-        report_file.write(f"Peak Detection Prominence: {prominence_value}\n")
-        report_file.write(f"Peak Detection Distance: {distance_value}\n\n")
-        report_file.write(f"Binning: {binning}\n\n")
-        report_file.write(f"Binning Factor: {binning_factor}\n\n")
-        report_file.write(f"Total Length of Data (Mask_0): {len(df['Mask_0'])}\n")
-        report_file.write("\nNumber of Peaks per Mask:\n")
-        for cfu, indices in peak_indices.items():
-            report_file.write(f"- {cfu}: {len(indices)} peaks\n")
-        report_file.write("\nFiles Saved:\n")
-        report_file.write(f"- CFU Analysis: {cfu_analysis_csv_path}\n")
-        report_file.write(f"- Peaks Summary: {peaks_csv_path}\n")
-        report_file.write("\nDate and Time of Analysis:\n")
-        report_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        report_file.write("\nOutput Folder:\n")
-        report_file.write(f"{output_dir}\n")
-
-    print(f"Saved analysis report to {report_path}")
 
 def plot_combined_smoothed_and_peak_density(
     df, smoothed_data_dict, peak_indices, fps, height_value, prominence_value, distance_value, sigma_value, output_path
@@ -1132,3 +1032,614 @@ def save_cfu_analysis_with_report_v3(
         report_file.write(f"{output_dir}\n")
 
     print(f"Saved analysis report to {report_path}")
+
+def calculate_nrmse(original, smoothed):
+    """
+    Calculate the Normalized Root Mean Square Error (NRMSE) between the original and smoothed data.
+    """
+    rmse = np.sqrt(np.mean((original - smoothed) ** 2))
+    data_range = np.max(original) - np.min(original)
+    nrmse = rmse / data_range
+    return nrmse
+
+def detect_nrmse(df, smoothed_df, fs, height=None, prominence=None, distance=None):
+    """
+    Detect peaks using already smoothed data and evaluate smoothing quality with NRMSE.
+
+    Parameters:
+        df (pd.DataFrame): Original DataFrame with raw signals.
+        smoothed_df (pd.DataFrame): Smoothed DataFrame for peak detection.
+        fs (float): Sampling frequency in Hz.
+        height (float): Minimum peak height.
+        prominence (float): Minimum peak prominence.
+        distance (int): Minimum distance between peaks.
+
+    Returns:
+        dict: Peak indices for each signal.
+        pd.DataFrame: NRMSE values for each signal.
+    """
+    nrmse_values = {}
+    for col in df.columns:
+        original_signal = df[col].values
+        smoothed_signal = smoothed_df[col].values
+        nrmse = calculate_nrmse(original_signal, smoothed_signal)
+        nrmse_values[col] = nrmse
+    nrmse_df = pd.DataFrame.from_dict(nrmse_values, orient='index', columns=["NRMSE"])
+    return  nrmse_df
+
+def generate_datasets(output_dir, num_training=100, num_testing=20, fs_range=(30, 64), **kwargs):
+    """
+    Generate datasets with varying frame rates and save as CSVs.
+
+    Parameters:
+        output_dir (str): Directory to save datasets.
+        num_training (int): Number of training files.
+        num_testing (int): Number of testing files.
+        fs_range (tuple): Range of sampling frequencies (Hz).
+    """
+    training_dir = os.path.join(output_dir, "Training")
+    testing_dir = os.path.join(output_dir, "Testing")
+    os.makedirs(training_dir, exist_ok=True)
+    os.makedirs(testing_dir, exist_ok=True)
+
+    for dataset, num_files in zip([training_dir, testing_dir], [num_training, num_testing]):
+        for i in range(num_files):
+            signals = []
+            fs = np.random.uniform(*fs_range)
+            for _ in range(5):  # Each file contains 5 signals
+                signal, _ = generate_synthetic_calcium_signal(fs=fs, **kwargs)
+                signals.append(signal)
+            pd.DataFrame(signals).T.to_csv(os.path.join(dataset, f"Dataset_{i+1}.csv"), index=False)
+
+def generate_negative_calcium_signal(length=1000, noise_level=0.1):
+    """
+    Generate a negative calcium signal with no peaks and only noise.
+
+    Parameters:
+        length (int): Length of the signal (number of time points).
+        noise_level (float): Relative noise level (fraction of signal amplitude).
+
+    Returns:
+        np.ndarray: Negative calcium signal (noise only).
+    """
+    # Generate a flat signal with noise
+    noise = noise_level * np.random.normal(size=length)
+    return noise
+
+def load_data(directory, label=1):
+    """
+    Load synthetic signals from a directory and label them.
+
+    Parameters:
+        directory (str): Path to the directory containing CSV files.
+        label (int): Label for the data (1 = peaks, 0 = no peaks).
+
+    Returns:
+        np.ndarray: Flattened features.
+        np.ndarray: Corresponding labels.
+    """
+    features = []
+    labels = []
+    for file in os.listdir(directory):
+        if file.endswith(".csv"):
+            filepath = os.path.join(directory, file)
+            data = pd.read_csv(filepath).values.T  # Transpose to get signals as rows
+            features.extend(data)
+            labels.extend([label] * data.shape[0])
+    return np.array(features), np.array(labels)
+
+def prepare_features_from_peaks(df, peak_indices, window_size=10):
+    """
+    Prepare features for each detected peak based on the signal around the peak.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing the signal traces (Delta F/F).
+        peak_indices (dict): Dictionary containing detected peak indices for each trace.
+        window_size (int): Number of frames before and after the peak to include in the feature.
+
+    Returns:
+        np.ndarray: Feature matrix for the detected peaks.
+        list: List of corresponding trace/column names.
+    """
+    features = []
+    trace_names = []
+    for trace_name, peaks in peak_indices.items():
+        signal = df[trace_name].values
+        for peak in peaks:
+            start = max(0, peak - window_size)
+            end = min(len(signal), peak + window_size)
+            # Extract the window and pad with zeros if necessary
+            window = np.zeros(2 * window_size)
+            valid_range = slice(window_size - (peak - start), window_size + (end - peak))
+            window[valid_range] = signal[start:end]
+            features.append(window)
+            trace_names.append(trace_name)
+
+    return np.array(features), trace_names
+
+def detect_peaks_with_model(df, model_path, window_size=10, save_path="predicted_peaks.csv"):
+    """
+    Detect peaks in intensity traces using a trained model.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame with intensity traces, where each column is a mask.
+        model_path (str): Path to the trained Random Forest model.
+        window_size (int): Number of frames before and after the peak to include in the feature.
+        save_path (str): Path to save the detected peaks as a CSV file.
+
+    Returns:
+        pd.DataFrame: DataFrame containing detected peaks with mask names and coordinates.
+    """
+    model = joblib.load(model_path)
+
+    all_peaks = []
+    for mask_name in df.columns:
+        signal = df[mask_name].values
+        features = []
+        frame_indices = []
+
+        # Create a feature vector for each frame in the signal
+        for frame in range(len(signal)):
+            start = max(0, frame - window_size)
+            end = min(len(signal), frame + window_size + 1)
+            window = np.zeros(2 * window_size + 1)
+            valid_range = slice(window_size - (frame - start), window_size + (end - frame))
+            window[valid_range] = signal[start:end]
+            features.append(window)
+            frame_indices.append(frame)
+
+        features = np.array(features)
+        
+        if features.size == 0:
+            continue  # Skip if no features are available
+
+        # Model prediction
+        predictions = model.predict(features)
+
+        # Store valid predicted peaks
+        for frame, prediction in zip(frame_indices, predictions):
+            if prediction == 1:  # Valid peak predicted by the model
+                all_peaks.append({"Mask": mask_name, "Frame": frame})
+
+    # Convert results to a DataFrame and save
+    peaks_df = pd.DataFrame(all_peaks)
+    if not peaks_df.empty:
+        peaks_df.to_csv(save_path, index=False)
+        print(f"Predicted peaks saved to {save_path}")
+    else:
+        print("No peaks detected and predicted by the model.")
+
+    return peaks_df
+
+
+def calculate_peak_overlap(peaks_df, tolerance=1):
+    """
+    Calculate overlap between peaks for each pair of masks.
+
+    Parameters:
+        peaks_df (pd.DataFrame): DataFrame with 'Mask' and 'Frame' columns.
+        tolerance (int): Number of frames for peak overlap tolerance.
+
+    Returns:
+        pd.DataFrame: Overlap matrix between masks.
+    """
+    masks = peaks_df['Mask'].unique()
+    overlap_matrix = pd.DataFrame(0, index=masks, columns=masks)
+
+    for mask_a in masks:
+        peaks_a = peaks_df[peaks_df['Mask'] == mask_a]['Frame'].values
+        for mask_b in masks:
+            if mask_a == mask_b:
+                overlap_matrix.loc[mask_a, mask_b] = len(peaks_a)
+            else:
+                peaks_b = peaks_df[peaks_df['Mask'] == mask_b]['Frame'].values
+                overlap_count = sum(
+                    any(abs(peak_a - peaks_b) <= tolerance) for peak_a in peaks_a
+                )
+                overlap_matrix.loc[mask_a, mask_b] = overlap_count
+
+    return overlap_matrix
+
+def plot_overlap_heatmap(overlap_matrix, output_path):
+    """
+    Generate a heatmap for the overlap matrix.
+
+    Parameters:
+        overlap_matrix (pd.DataFrame): Matrix of overlaps between masks.
+        output_path (str): Path to save the heatmap HTML file.
+    """
+    fig = px.imshow(
+        overlap_matrix,
+        labels=dict(x="Mask", y="Mask", color="Overlap Count"),
+        title="Peak Overlap Heatmap",
+        color_continuous_scale="Viridis"
+    )
+    heatmap_path = f"{output_path}/overlap_heatmap.html"
+    fig.write_html(heatmap_path)
+    print(f"Heatmap saved to {heatmap_path}")
+
+def generate_synthetic_calcium_signal(length=1000, num_peaks=20, fs=30, noise_level=0.1, decay_time=0.5):
+    """
+    Generate a synthetic calcium signal with exponential peaks and noise.
+
+    Parameters:
+        length (int): Length of the signal (number of time points).
+        num_peaks (int): Number of peaks to generate.
+        fs (float): Sampling frequency (frames per second).
+        noise_level (float): Relative noise level (fraction of the signal's amplitude).
+        decay_time (float): Decay time in seconds.
+
+    Returns:
+        np.ndarray: Synthetic calcium signal.
+        np.ndarray: Indices of the generated peaks.
+    """
+    signal = np.zeros(length)
+    rise_time = int(0.1 * fs)
+    decay_time_frames = int(decay_time * fs)  # Frames for the decay
+    peak_indices = np.random.choice(np.arange(rise_time, length - decay_time_frames), size=num_peaks, replace=False)
+    peak_indices.sort()
+
+    for peak in peak_indices:
+        rise = np.linspace(0, 1, rise_time)
+        decay = np.exp(-np.linspace(0, 5, decay_time_frames))
+        full_peak = np.concatenate([rise, decay])
+        amplitude = np.random.uniform(0.1, 2)
+        signal[peak - rise_time:peak + decay_time_frames] += amplitude * full_peak[:min(len(full_peak), length - (peak - rise_time))]
+
+    noise = noise_level * np.random.normal(size=signal.shape)
+    signal += noise
+    return signal, peak_indices
+def calculate_and_save_predicted_peak_amplitudes(df, predictions_df, fs, output_dir):
+    """
+    Calculate and save amplitudes of predicted peaks for each trace.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame of signal traces.
+        predictions_df (pd.DataFrame): DataFrame with predicted peaks.
+        fs (float): Sampling frequency.
+        output_dir (str): Directory to save results.
+
+    Returns:
+        None
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    amplitudes = []
+
+    for trace in df.columns:
+        data = df[trace].values
+        # Updated column names to match the provided DataFrame
+        predicted_indices = predictions_df[(predictions_df["Mask"] == trace)]["Frame"].values
+        for peak in predicted_indices:
+            local_min = np.min(data[max(0, peak - 3):peak])  # Find local minimum near the peak
+            amplitude = data[peak] - local_min
+            amplitudes.append({
+                "Trace": trace,
+                "Frame": peak,
+                "Amplitude": amplitude
+            })
+
+    # Save results to a CSV file
+    amplitudes_df = pd.DataFrame(amplitudes)
+    output_file = os.path.join(output_dir, "predicted_peak_amplitudes.csv")
+    amplitudes_df.to_csv(output_file, index=False)
+    print(f"Predicted peak amplitudes saved to {output_file}")
+
+
+def generate_challenging_negative_signal(length=1000, fs=30, noise_level=0.2):
+    """
+    Generate a challenging negative calcium signal with pseudo-bursts and sinusoidal noise.
+    """
+    signal = np.zeros(length)
+    num_pseudo_bursts = np.random.randint(1, 3)
+    for _ in range(num_pseudo_bursts):
+        start = np.random.randint(0, length - fs)
+        pseudo_burst = np.sin(np.linspace(0, np.pi, fs)) * np.random.uniform(0.1, 0.3)
+        end = min(length, start + len(pseudo_burst))
+        signal[start:end] += pseudo_burst[:end - start]
+
+    t = np.linspace(0, length / fs, length)
+    sinusoidal_noise = np.sin(2 * np.pi * 0.1 * t) * 0.2
+    signal += sinusoidal_noise
+
+    noise = noise_level * np.random.normal(size=signal.shape)
+    signal += noise
+    return signal
+
+def load_data_from_generated_signals(num_positive, num_negative, length=1000, fs=30):
+    """
+    Generate and load data for training.
+    """
+    positive_signals = [generate_challenging_positive_signal(length=length, fs=fs) for _ in range(num_positive)]
+    negative_signals = [generate_challenging_negative_signal(length=length, fs=fs) for _ in range(num_negative)]
+
+    positive_labels = [1] * len(positive_signals)
+    negative_labels = [0] * len(negative_signals)
+
+    features = np.array(positive_signals + negative_signals)
+    labels = np.array(positive_labels + negative_labels)
+
+    return features, labels
+
+def train_model(features, labels, model_save_path):
+    """
+    Train a Random Forest model on the provided features and labels.
+    """
+    X_train, X_val, y_train, y_val = train_test_split(features, labels, test_size=0.2, random_state=42)
+
+    print(f"Training Set Size: {X_train.shape}")
+    print(f"Validation Set Size: {X_val.shape}")
+
+    rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_classifier.fit(X_train, y_train)
+
+    y_pred = rf_classifier.predict(X_val)
+    print("Validation Set Evaluation:")
+    print("Classification Report:\n", classification_report(y_val, y_pred))
+    print("Confusion Matrix:\n", confusion_matrix(y_val, y_pred))
+
+    joblib.dump(rf_classifier, model_save_path)
+    print(f"Model saved to {model_save_path}")
+
+def plot_peaks_with_predictions(df, peak_indices, predictions_df, output_dir, fps):
+    """
+    Plot calcium signal with detected peaks (red) and predicted peaks (green).
+
+    Parameters:
+        df (pd.DataFrame): DataFrame containing the calcium signal traces.
+        peak_indices (dict): Dictionary of detected peak indices for each signal.
+        predictions_df (pd.DataFrame): DataFrame of predicted peaks from the model.
+        output_dir (str): Path to save the plots.
+        fps (float): Sampling frequency for time axis.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for trace in df.columns:
+        signal = df[trace].values
+        detected_peaks = peak_indices.get(trace, [])
+
+        # Use 'Mask' instead of 'Trace'
+        predicted_peaks = predictions_df[predictions_df["Mask"] == trace]
+        predicted_indices = predicted_peaks["Frame"].values
+
+        time = np.arange(len(signal)) / fps
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=time, y=signal, mode="lines", name="Signal"))
+        fig.add_trace(go.Scatter(
+            x=time[detected_peaks],
+            y=signal[detected_peaks],
+            mode="markers",
+            marker=dict(color="red", size=8),
+            name="Detected Peaks"
+        ))
+        fig.add_trace(go.Scatter(
+            x=time[predicted_indices],
+            y=signal[predicted_indices],
+            mode="markers",
+            marker=dict(color="green", size=10),
+            name="Predicted Peaks"
+        ))
+        fig.update_layout(
+            title=f"Peaks for {trace}",
+            xaxis_title="Time (s)",
+            yaxis_title="Signal Intensity",
+            template="plotly_white"
+        )
+        output_path = os.path.join(output_dir, f"{trace}_peaks_with_predictions.html")
+        fig.write_html(output_path)
+        print(f"Saved plot for {trace} to {output_path}")
+
+        
+
+def save_cfu_analysis_with_report_v4(
+    df, smoothed_data_dict, baseline_dict, peak_indices, predictions_df, recommendations_df, output_dir,
+    link_folder, link_file_mat, link_save, sigma_value, deg_value, fs_value, binning, binning_factor
+):
+    """
+    Enhanced CFU analysis with additional details for both detected and predicted peaks, and overlap statistics.
+
+    Parameters:
+        df (pd.DataFrame): Original CFU DataFrame.
+        smoothed_data_dict (dict): Dictionary containing smoothed data for each CFU.
+        baseline_dict (dict): Dictionary containing baseline data for each CFU.
+        peak_indices (dict): Dictionary containing indices of detected peaks for each CFU.
+        predictions_df (pd.DataFrame): DataFrame containing model-predicted peaks.
+        recommendations_df (pd.DataFrame): DataFrame of recommended parameters.
+        output_dir (str): Directory to save the CSV files and report.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    cfu_analysis_df = pd.DataFrame()
+    for cfu in df.columns:
+        original_data = df[cfu]
+        smoothed_data = smoothed_data_dict[cfu]
+        baseline_data = baseline_dict[cfu]
+        detected_peaks = np.zeros(len(smoothed_data), dtype=int)
+        detected_peaks[peak_indices[cfu]] = 1  # Mark detected peaks
+        predicted_peaks = np.zeros(len(smoothed_data), dtype=int)
+        if not predictions_df.empty:
+            predicted_indices = predictions_df[predictions_df["Mask"] == cfu]["Frame"].values
+            predicted_peaks[predicted_indices] = 1
+
+        cfu_data = pd.DataFrame({
+            "CFU": cfu,
+            "Original CFU Data": original_data,
+            "Smoothed CFU Data": smoothed_data,
+            "Baseline CFU Data": baseline_data,
+            "Detected Peaks (Smoothed)": detected_peaks,
+            "Predicted Peaks": predicted_peaks
+        })
+        cfu_analysis_df = pd.concat([cfu_analysis_df, cfu_data], ignore_index=True)
+
+    cfu_analysis_csv_path = os.path.join(output_dir, "cfu_analysis_with_predictions.csv")
+    cfu_analysis_df.to_csv(cfu_analysis_csv_path, index=False)
+    print(f"Saved CFU analysis to {cfu_analysis_csv_path}")
+    detected_peaks_summary = [{"CFU": cfu, "Detected Peak Count": len(peak_indices[cfu])} for cfu in df.columns]
+    predicted_peaks_summary = predictions_df.groupby("Mask")["Frame"].count().reset_index()
+    predicted_peaks_summary.columns = ["CFU", "Predicted Peak Count"]
+
+    overlap_counts = [
+        {
+            "CFU": cfu,
+            "Overlap Count": len(
+                set(peak_indices[cfu]).intersection(
+                    predictions_df[predictions_df["Mask"] == cfu]["Frame"].values
+                )
+            )
+        }
+        for cfu in df.columns
+    ]
+
+    detected_peaks_df = pd.DataFrame(detected_peaks_summary)
+    detected_peaks_df.to_csv(os.path.join(output_dir, "detected_peaks_summary.csv"), index=False)
+    predicted_peaks_summary.to_csv(os.path.join(output_dir, "predicted_peaks_summary.csv"), index=False)
+    overlap_counts_df = pd.DataFrame(overlap_counts)
+    overlap_counts_df.to_csv(os.path.join(output_dir, "overlap_summary.csv"), index=False)
+
+    print(f"Saved detected peaks summary to {os.path.join(output_dir, 'detected_peaks_summary.csv')}")
+    print(f"Saved predicted peaks summary to {os.path.join(output_dir, 'predicted_peaks_summary.csv')}")
+    print(f"Saved overlap summary to {os.path.join(output_dir, 'overlap_summary.csv')}")
+    report_path = os.path.join(output_dir, "analysis_report_v4.txt")
+    with open(report_path, "w") as report_file:
+        report_file.write("Analysis Report (v4)\n")
+        report_file.write("=" * 40 + "\n\n")
+        report_file.write("Links and Paths:\n")
+        report_file.write(f"Data Folder: {link_folder}\n")
+        report_file.write(f"MAT File: {link_file_mat}\n")
+        report_file.write(f"Save Folder: {link_save}\n\n")
+        report_file.write("Coefficients Used:\n")
+        report_file.write(f"Smoothing Sigma Value: {sigma_value}\n")
+        report_file.write(f"Baseline Degree: {deg_value}\n")
+        report_file.write(f"Frames Per Second (FPS): {fs_value}\n")
+        report_file.write(f"Binning: {binning}\n")
+        report_file.write(f"Binning Factor: {binning_factor}\n")
+        report_file.write(f"Total Length of Data (Mask_0): {len(df['Mask_0'])}\n\n")
+        report_file.write("Number of Peaks per Mask:\n")
+        for cfu, indices in peak_indices.items():
+            report_file.write(f"- {cfu}: {len(indices)} detected peaks\n")
+        report_file.write("\nRecommended Peak Detection Parameters:\n")
+        for _, row in recommendations_df.iterrows():
+            report_file.write(f"- {row['ROI']}:\n")
+            report_file.write(f"  Height: {row['Recommended_Height']}\n")
+            report_file.write(f"  Prominence: {row['Recommended_Prominence']}\n")
+        report_file.write("\nOverlap Statistics:\n")
+        report_file.write(f"Total Detected Peaks: {detected_peaks_df['Detected Peak Count'].sum()}\n")
+        report_file.write(f"Total Predicted Peaks: {predicted_peaks_summary['Predicted Peak Count'].sum()}\n")
+        report_file.write(f"Total Overlap Peaks: {overlap_counts_df['Overlap Count'].sum()}\n\n")
+        report_file.write("Files Saved:\n")
+        report_file.write(f"- CFU Analysis: {cfu_analysis_csv_path}\n")
+        report_file.write(f"- Detected Peaks Summary: {os.path.join(output_dir, 'detected_peaks_summary.csv')}\n")
+        report_file.write(f"- Predicted Peaks Summary: {os.path.join(output_dir, 'predicted_peaks_summary.csv')}\n")
+        report_file.write(f"- Overlap Summary: {os.path.join(output_dir, 'overlap_summary.csv')}\n")
+        report_file.write(f"- Recommendations: {os.path.join(output_dir, 'peak_detection_recommendations.csv')}\n")
+        report_file.write("\nDate and Time of Analysis:\n")
+        report_file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        report_file.write("\nOutput Folder:\n")
+        report_file.write(f"{output_dir}\n")
+
+    print(f"Saved analysis report to {report_path}")
+
+def plot_combined_smoothed_and_peak_density_with_predictions(
+    df, smoothed_data_dict, peak_indices, predicted_peaks_df, baseline_dict, fps, output_path
+):
+    """
+    Plots smoothed data, detected peaks, predicted peaks, and baselines combined with peak density.
+
+    Parameters:
+        df (pd.DataFrame): Original data for reference.
+        smoothed_data_dict (dict): Dictionary of smoothed data.
+        peak_indices (dict): Dictionary of detected peaks.
+        predicted_peaks_df (pd.DataFrame): DataFrame with predicted peaks and their indices.
+        baseline_dict (dict): Dictionary of baseline values for each CFU.
+        fps (float): Frames per second of the data.
+        output_path (str): Path to save the plots.
+    """
+    output_path = os.path.join(output_path, 'combined_smoothed_peak_density_with_predictions')
+    os.makedirs(output_path, exist_ok=True)
+
+    combined_fig = go.Figure()
+
+    for trace in df.columns:
+        original_data = df[trace].values
+        smoothed_data = smoothed_data_dict[trace]
+        baseline = baseline_dict[trace]
+        detected_indices = peak_indices.get(trace, [])
+        predicted_indices = predicted_peaks_df[predicted_peaks_df["Mask"] == trace]["Frame"].values
+        time = np.arange(len(original_data)) / fps
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=time, y=smoothed_data, mode="lines", name="Smoothed Data", line=dict(color="green", width=2)))
+        fig.add_trace(go.Scatter(x=time, y=original_data, mode="lines", name="Original Data", line=dict(color="blue", width=1)))
+        fig.add_trace(go.Scatter(
+            x=time, y=baseline, mode="lines", name="Baseline", line=dict(color="orange", dash="dash")
+        ))
+        fig.add_trace(go.Scatter(
+            x=time[detected_indices], y=smoothed_data[detected_indices],
+            mode="markers", name="Detected Peaks", marker=dict(color="red", size=8)
+        ))
+        fig.add_trace(go.Scatter(
+            x=time[predicted_indices], y=smoothed_data[predicted_indices],
+            mode="markers", name="Predicted Peaks", marker=dict(color="green", size=8)
+        ))
+        fig.update_layout(
+            title=f"Smoothed Data with Peaks and Baseline for {trace}",
+            xaxis_title="Time (s)",
+            yaxis_title="Intensity",
+            template="plotly_white"
+        )
+        individual_output_path = os.path.join(output_path, f"{trace}_smoothed_density_with_predictions.html")
+        fig.write_html(individual_output_path)
+        print(f"Saved combined plot with predictions for {trace} to {individual_output_path}")
+        combined_fig.add_trace(go.Scatter(x=time, y=smoothed_data, mode="lines", name=f"Smoothed {trace}"))
+        combined_fig.add_trace(go.Scatter(
+            x=time[detected_indices], y=smoothed_data[detected_indices],
+            mode="markers", name=f"Detected Peaks {trace}", marker=dict(color="red", size=8)
+        ))
+        combined_fig.add_trace(go.Scatter(
+            x=time[predicted_indices], y=smoothed_data[predicted_indices],
+            mode="markers", name=f"Predicted Peaks {trace}", marker=dict(color="green", size=8)
+        ))
+        combined_fig.add_trace(go.Scatter(
+            x=time, y=baseline, mode="lines", name=f"Baseline {trace}", line=dict(color="orange", dash="dash")
+        ))
+    combined_output_path = os.path.join(output_path, "all_cfus_smoothed_density_with_predictions_combined.html")
+    combined_fig.update_layout(
+        title="Smoothed Data with Detected and Predicted Peaks for All CFUs",
+        xaxis_title="Time (s)",
+        yaxis_title="Intensity",
+        template="plotly_white"
+    )
+    combined_fig.write_html(combined_output_path)
+    print(f"Saved combined peak detection graph to {combined_output_path}")
+def update_peak_csv(df, detected_peaks, predicted_peaks_df, output_path):
+    """
+    Update the peak CSV with overlap counts and predicted peaks.
+
+    Parameters:
+        df (pd.DataFrame): Original DataFrame containing calcium signals.
+        detected_peaks (dict): Dictionary of detected peak indices for each signal.
+        predicted_peaks_df (pd.DataFrame): DataFrame of predicted peaks.
+        output_csv (str): Path to save the updated peaks file.
+
+    Returns:
+        None
+    """
+    overlap_data = []
+    overlap_count = 0
+
+    for mask in df.columns:  # Use "Mask" instead of "Trace"
+        detected_indices = set(detected_peaks.get(mask, []))
+        predicted_indices = set(
+            predicted_peaks_df[(predicted_peaks_df["Mask"] == mask)]["Frame"].values
+        )
+        overlap = detected_indices.intersection(predicted_indices)
+        overlap_count += len(overlap)
+
+        overlap_data.append({
+            "Mask": mask,
+            "Detected Peaks": len(detected_indices),
+            "Predicted Peaks": len(predicted_indices),
+            "Overlap": len(overlap),
+        })
+    output_csv = os.path.join(output_path, '/peaks_with_predictions.csv')
+    overlap_df = pd.DataFrame(overlap_data)
+    overlap_df.to_csv(output_csv, index=False)
+    print(f"Updated peak analysis saved to {output_csv}")
+    print(f"Total Overlap Count: {overlap_count}")
