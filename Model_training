@@ -1,0 +1,45 @@
+output_dir = r"E:\Data\analysis_cm005\from_masks\Training_random"
+generate_datasets_with_positive_and_negative_labels(
+    output_dir=output_dir,
+    num_training=1000,
+    num_testing=600,
+    fs_range=(30, 64),  # Optional if you use length directly
+    length=6000,  # Length in frames
+    num_peaks=200,
+    noise_level=0.2,
+    decay_time=0.5
+)
+# Parameters for the data generation and model
+output_dir = r"E:\Data\analysis_cm005\from_masks\Training_random"
+model_save_path = os.path.join(output_dir, "random_forest_model_challenging_most_positivedata_risetime2.pkl")
+
+training_signal_dir = os.path.join(output_dir, "Training")
+training_label_dir = os.path.join(output_dir, "Training")
+testing_signal_dir = os.path.join(output_dir, "Testing")
+testing_label_dir = os.path.join(output_dir, "Testing")
+
+
+train_model_from_generated_data(
+    training_signal_dir=training_signal_dir,
+    training_label_dir=training_label_dir,
+    testing_signal_dir=testing_signal_dir,
+    testing_label_dir=testing_label_dir,
+    model_save_path=model_save_path,
+    window_size=60
+)
+'''
+Loading training data...
+Loading testing data...
+Training the model...
+Evaluating the model...
+              precision    recall  f1-score   support
+
+         0.0       1.00      1.00      1.00   3594320
+         1.0       1.00      0.98      0.99      5680
+
+    accuracy                           1.00   3600000
+   macro avg       1.00      0.99      0.99   3600000
+weighted avg       1.00      1.00      1.00   3600000
+
+Trained model saved to E:\Data\analysis_cm005\from_masks\Training_random\random_forest_model_challenging_most_positivedata_risetime2.pkl
+'''
