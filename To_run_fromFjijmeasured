@@ -1,0 +1,139 @@
+# cm007_3kn_20241202_164032
+link_folder = r'E:\Data\241202_CM007\cm007_3kn_20241202_164032\suite2p_unit2\unit2_axon2'
+link_file_fiji = r'E:\Data\241202_CM007\cm007_3kn_20241202_164032\suite2p_unit2\unit2_axon2.txt'
+link_save = r'E:\Data\241202_CM007\cm007_3kn_20241202_164032\suite2p_unit2\unit2_axon2\Save'
+tiff_file = r"E:\Data\241202_CM007\cm007_3kn_20241202_164032\suite2p_unit2\unit2.tif"
+mask_folder = r"None"
+link_file_mat = r"None"
+output_csv = link_save + "\intensity_data.csv"
+
+
+sigma_value = 10
+deg_value = 5
+fs_value = 60
+fps = 60
+height_value=0.56        # Minimum height of peaks (adjust as needed)
+prominence_value=0.52   # Minimum prominence of peaks
+distance_value=2
+cutoff_value = 5
+use_recommended_params = True  # Set to False to use global parameters
+binning = False
+#mat = False
+list_val = False
+binning_factor = 2
+
+#cols_list = ['Mask_0','Mask_48', 'Mask_51', 'Mask_54','Mask_62']
+#cfu_list = ['CFU_0','CFU_50', 'CFU_61', 'CFU_43']
+
+##################Data (run from .mat files)########################################################
+####################################################################################################
+
+# Step 1: Load file
+file_fiji = pd.read_csv(link_file_fiji, sep = '\t')
+
+# Step 2: check if folders exist
+if not os.path.exists(link_folder):
+    os.makedirs(link_folder)
+if not os.path.exists(link_save):
+    os.makedirs(link_save)
+
+# Step 3: Prepare and normalize intensity data
+intensity_data = pd.DataFrame(file_fiji)
+intensity_data = intensity_data.filter(like="Mean")
+intensity_data.columns = intensity_data.columns.str.replace("Mean", "Mask_", regex=True)
+intensity_data_corr = pd.DataFrame()
+for col in intensity_data.columns:
+    intensity_data_corr[col] = intensity_data[col] - intensity_data[col].min() + 114
+dff_data = calculate_dff(intensity_data_corr)
+
+# Step 4: Filter masks if a list is provided
+pd_data_corr = dff_data
+if list_val:
+    pd_data_corr = pd_data_corr[cols_list]
+    print('Masks filtered by list')
+else:
+    print('All masks are in use')
+
+# Step 5: Apply binning if enabled
+if binning:
+    pd_data_corr = bin_dataframe(pd_data_corr, bin_factor=binning_factor)
+    fs_value = fs_value / binning_factor
+    print('Binning used')
+else:
+    print('No binning used')
+
+# Step 6: Calculate baselines and ΔF/F
+pd_data_corr_baseline = calculate_baseline(pd_data_corr, sigma=sigma_value, deg=deg_value)
+pd_data_corr_df = pd.DataFrame()
+for col in pd_data_corr_baseline.columns:
+    pd_data_corr_df[col] = (pd_data_corr[col] - pd_data_corr_baseline[col]) / pd_data_corr_baseline[col]
+pd_data_corr_df_baselinetocheck = calculate_baseline(pd_data_corr_df, sigma=sigma_value, deg=deg_value)
+
+# Step 7: Identify calm regions and recommend parameters
+calm_regions, recommendations = run_analysis_pipeline(
+    pd_data_corr_df, fs_value, calm_length=1, peak_threshold=1, output_dir=link_save
+)
+
+# Initialize peak_indices and smoothed_data
+peak_indices = {}
+smoothed_data = {}
+
+# Step 8: Choose whether to use recommended parameters or global defaults
+use_recommended_params = True  # Set to False to use global parameters
+if use_recommended_params:
+    print("Using recommended parameters for peak detection")
+    for _, row in recommendations.iterrows():
+        roi = row["ROI"]
+        if pd.notna(row["Recommended_Height"]) and pd.notna(row["Recommended_Prominence"]):
+            # Use ROI-specific recommended parameters
+            peak_indices_tmp, smoothed_data_tmp, _ = detect_peaks_on_smoothed_data(
+                pd_data_corr_df[[roi]],
+                fs=fs_value,
+                cutoff=cutoff_value,
+                height=row["Recommended_Height"],
+                prominence=row["Recommended_Prominence"],
+                distance=distance_value
+            )
+            peak_indices[roi] = peak_indices_tmp[roi]
+            smoothed_data[roi] = smoothed_data_tmp[roi]
+        else:
+            peak_indices[roi] = []
+            smoothed_data[roi] = pd_data_corr_df[roi].values
+else:
+    print("Using global parameters for peak detection")
+    peak_indices, smoothed_data, _ = detect_peaks_on_smoothed_data(
+        pd_data_corr_df,
+        fs=fs_value,
+        cutoff=cutoff_value,
+        height=height_value,
+        prominence=prominence_value,
+        distance=distance_value
+    )
+
+# Step 9: Plot results
+plot_peaks_on_smoothed_data_with_baseline(
+    pd_data_corr_df, smoothed_data, peak_indices, pd_data_corr_df_baselinetocheck,
+    link_save + '\CFU_Peaks_calc_smooth', fs_value
+)
+plot_peak_density_per_cfu(peak_indices, fs=fs_value, output_dir=link_save + '\CFU_Peaks_dencity')
+
+# Step 10: Save analysis and generate reports
+save_cfu_analysis_with_report_v3(
+    pd_data_corr_df, smoothed_data, pd_data_corr_df_baselinetocheck, peak_indices, recommendations,
+    link_save, link_folder, link_file_mat, link_save,
+    sigma_value, deg_value, fs_value, binning, binning_factor
+)
+
+# Step 11: Additional plots and analyses
+plot_combined_smoothed_and_peak_density(
+    pd_data_corr_df, smoothed_data, peak_indices, fps=fs_value,
+    height_value=height_value, prominence_value=prominence_value, distance_value=distance_value,
+    sigma_value=sigma_value, output_path=link_save
+)
+overlap_df = compare_peak_times(
+    peak_indices, tolerance_frames=1, fps=fs_value, output_path=link_save
+)
+plot_high_overlap_pairs(pd_data_corr_df, smoothed_data, peak_indices, overlap_df, 80, fs_value, link_save)
+calculate_and_save_peak_amplitudes_with_context(
+    pd_data_corr_df, peak_indices, fs_value, link_save, context_before=5, context_after=0.5
+)
