@@ -1013,7 +1013,8 @@ def save_cfu_analysis_with_report_v3(
         report_file.write(f"Frames Per Second (FPS): {fs_value}\n")
         report_file.write(f"Binning: {binning}\n\n")
         report_file.write(f"Binning Factor: {binning_factor}\n\n")
-        report_file.write(f"Total Length of Data (Mask_0): {len(df['Mask_0'])}\n")
+        col_list = df.columns.tolist()
+        report_file.write(f"Total Length of Data (Mask_1): {len(df[col_list[0]])}\n")
         report_file.write("\nNumber of Peaks per Mask:\n")
         for cfu, indices in peak_indices.items():
             report_file.write(f"- {cfu}: {len(indices)} peaks\n")
