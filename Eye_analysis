@@ -1,0 +1,152 @@
+# --- 📦 IMPORTS ---
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+from scipy.ndimage import label
+
+# --- 🛠️ FUNCTIONS ---
+
+def load_video_intensity(video_path, chunk_size=20000):
+    cap = cv2.VideoCapture(video_path)
+    avg_intensity_all = []
+    frame_counter = 0
+    chunk_counter = 0
+
+    while True:
+        frames = []
+        for _ in range(chunk_size):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frames.append(frame_gray)
+            frame_counter += 1
+
+        if len(frames) == 0:
+            break
+
+        frames = np.stack(frames, axis=0)
+        avg_intensity = frames.mean(axis=(1, 2))
+        avg_intensity_all.append(avg_intensity)
+
+        chunk_counter += 1
+
+    cap.release()
+    avg_intensity_all = np.concatenate(avg_intensity_all)
+    print(f"✅ Loaded {frame_counter} frames in {chunk_counter} chunks.")
+    return avg_intensity_all
+
+
+def detect_first_bright_episode(avg_intensity_all, threshold_ratio=0.7):
+    threshold = threshold_ratio * np.max(avg_intensity_all)
+    labeled_array, num_features = label(avg_intensity_all > threshold)
+    if num_features == 0:
+        raise ValueError("❌ No bright episode detected!")
+    episode_frames = np.where(labeled_array == 1)[0]
+    return episode_frames
+
+
+def load_frame(video_path, frame_idx):
+    cap = cv2.VideoCapture(video_path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        raise ValueError(f"❌ Couldn't read frame {frame_idx}")
+    frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return frame_gray
+
+
+def detect_pupil(frame_gray):
+    blurred = cv2.medianBlur(frame_gray, 5)
+    circles = cv2.HoughCircles(
+        blurred, 
+        cv2.HOUGH_GRADIENT, 
+        dp=1.2, 
+        minDist=30, 
+        param1=50, 
+        param2=30, 
+        minRadius=5, 
+        maxRadius=50
+    )
+    if circles is None:
+        raise ValueError("❌ No circles detected!")
+
+    circles = np.round(circles[0, :]).astype("int")
+    max_mean_intensity = -np.inf
+    best_circle = None
+
+    for (x, y, r) in circles:
+        mask = np.zeros_like(frame_gray, dtype=np.uint8)
+        cv2.circle(mask, (x, y), r, 1, thickness=-1)
+        mean_intensity = frame_gray[mask == 1].mean()
+        if mean_intensity > max_mean_intensity:
+            max_mean_intensity = mean_intensity
+            best_circle = (x, y, r)
+
+    return best_circle
+
+
+def crop_and_save_intensity(video_path, output_folder, avg_intensity_all, best_circle):
+    os.makedirs(output_folder, exist_ok=True)
+    
+    x_center, y_center, radius = best_circle
+    crop_size = int(3 * radius)
+    half_crop = crop_size // 2
+
+    x1 = max(x_center - half_crop, 0)
+    y1 = max(y_center - half_crop, 0)
+    x2 = x1 + crop_size
+    y2 = y1 + crop_size
+
+    cap = cv2.VideoCapture(video_path)
+    labeled_array, num_features = label(avg_intensity_all > 0.7 * np.max(avg_intensity_all))
+
+    for episode_idx in range(1, num_features + 1):
+        episode_frames = np.where(labeled_array == episode_idx)[0]
+        intensities = []
+
+        for idx in episode_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            cropped_frame = frame_gray[y1:y2, x1:x2]
+            if cropped_frame.size == 0:
+                intensities.append(np.nan)
+                continue
+            mean_intensity = np.mean(cropped_frame)
+            intensities.append(mean_intensity)
+
+        intensities = np.array(intensities)
+        save_path = os.path.join(output_folder, f'episode_{episode_idx}_intensity.txt')
+        np.savetxt(save_path, intensities)
+        print(f"✅ Saved {save_path} with {len(intensities)} frames.")
+
+    cap.release()
+
+# --- 🚀 WORKFLOW ---
+
+# 👉 USER INPUT
+video_path = r'F:/Data/eyes/250329/your_video.mp4'  # <-- CHANGE THIS
+output_folder = r'F:/Data/eyes/250329/output'       # <-- CHANGE THIS
+
+# 1. Load video and compute average intensity
+iavg = load_video_intensity(video_path)
+
+# 2. Find the first bright episode
+episode_frames = detect_first_bright_episode(iavg)
+
+# 3. Load the 50th frame of the first episode
+target_frame_idx = episode_frames[50] if len(episode_frames) > 50 else episode_frames[-1]
+target_frame = load_frame(video_path, target_frame_idx)
+
+# 4. Detect pupil in the selected frame
+best_circle = detect_pupil(target_frame)
+
+# 5. Crop around pupil and save episode intensities
+crop_and_save_intensity(video_path, output_folder, iavg, best_circle)
+
+print("✅✅✅ ALL DONE!")
